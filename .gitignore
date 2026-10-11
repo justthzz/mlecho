@@ -219,3 +219,12 @@ __marimo__/
 
 #local docs
 local-docs/
+
+# MLEcho local outputs
+data/
+mlruns/
+mlartifacts/
+mlflow.db
+
+# macOS
+.DS_Store
