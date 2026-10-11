@@ -2,25 +2,23 @@
 
 Final-year project: a pip-installable library that detects training-data poisoning **during** training (CNN-VAE + label check), classifies the attack, and responds (rule-based policy and a PPO agent behind one interface), logging every event to MLflow.
 
-- Build plan, current step and design decisions: `docs/ROADMAP.md`. Read it first and keep its status up to date.
-- Code layout and rules: `docs/ARCHITECTURE.md`. Follow it exactly.
+Read these first. Each fact lives in exactly one of them, so link to them rather than copying:
 
-## Commands
+- `docs/ROADMAP.md`: build steps, **current step**, design decisions, open items
+- `docs/ARCHITECTURE.md`: folder layout, import rules, coding rules, commit checks, which doc owns what
+- `README.md`: public description, status table, dev setup
 
-```bash
-source venv/bin/activate
-pip install -e ".[mlflow,dev]"
-ruff format src tests experiments && ruff check . && pytest   # must pass before every commit
-python experiments/01_clean_baseline.py --epochs 5
-```
+## Environment
 
+- `source venv/bin/activate`, then `pip install -e ".[mlflow,dev]"`.
 - Apple M2, 8 GB RAM, device `mps`. Keep models and batches small.
 - Set `MLFLOW_DISABLE_AGENT_HINT=1` when running experiments to silence an MLflow hint.
 - Downloads can fail with SSL errors on this Mac. Use `SSL_CERT_FILE=$(python -m certifi)`, and `curl -C -` to resume large downloads.
 
-## Conventions
+## Working rules
 
-- Conventional Commits, **one commit per logical change**, no `Co-Authored-By` line. Ask before pushing.
-- Library code (`src/`) has no prints, type hints and docstrings on public API, and fast tests without downloads.
-- Experiments are numbered scripts in `experiments/` that log params, metrics and artifacts to MLflow with a `--seed`.
+- Run the commit checks in ARCHITECTURE.md before every commit.
+- Commits: one per logical change, Conventional Commits, **no `Co-Authored-By` line**. Ask before pushing.
 - After changing behaviour, re-run the affected experiment and confirm the numbers.
+- When a step finishes, update the ROADMAP status, the README status table and, if folders changed, the ARCHITECTURE layout.
+- Report status from what runs in the repo now, never from what is planned.
