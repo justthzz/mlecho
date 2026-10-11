@@ -25,6 +25,19 @@ pip install mlecho
 
 This package currently ships a placeholder API only. Calling `mlecho.detect()` raises `NotImplementedError`. Follow the repository for progress as the core CNN-VAE detector, classifier, and response modules are implemented.
 
+## Development
+
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -e ".[mlflow,dev]"
+
+ruff format src tests experiments && ruff check . && pytest   # before every commit
+python experiments/01_clean_baseline.py --epochs 5             # clean CIFAR-10 baseline
+mlflow ui                                                      # view results at http://127.0.0.1:5000
+```
+
+Code layout and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
