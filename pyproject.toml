@@ -7,7 +7,12 @@ name = "mlecho"
 version = "0.0.1"
 description = "Real-time CNN-VAE poisoning detection for MLOps pipelines"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "torch>=2.2",
+    "torchvision>=0.17",
+]
 license = { text = "MIT" }
 authors = [
     { name = "Thanuja Liyanage" }
@@ -27,7 +32,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -35,9 +39,24 @@ classifiers = [
     "Topic :: Security",
 ]
 
+[project.optional-dependencies]
+mlflow = ["mlflow>=2.10"]
+dev = ["pytest", "ruff"]
+
 [project.urls]
 Repository = "https://github.com/justthzz/mlecho"
 Issues = "https://github.com/justthzz/mlecho/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# E/F: real errors, I: sorted imports, UP: modern Python, B: common bug patterns
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
