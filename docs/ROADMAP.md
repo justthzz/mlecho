@@ -29,7 +29,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 - Score **each image**, then combine per batch (max / top-k / share above threshold). A plain batch average would dilute a few poisoned images.
 - Check 2 (label): a clean reference model predicts each label; a high mismatch rate in a batch means label-flip. Check 1 alone can't see label-flips, because the images are normal.
 - Thresholds are calibrated on clean **validation** data, never on test.
-- Baseline for comparison: PSI/KS statistical drift detector (`src/mlecho/baselines/`).
+- Baseline for comparison: PSI/KS statistical drift detector (`src/mlecho/bench/baselines/`).
 - Report precision, recall and false-positive rate.
 
 ### 4. Classifier (`src/mlecho/classification/`)
@@ -45,7 +45,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 - `Guard` wraps detector + classifier + policy + executor.
 - Every event goes to MLflow (metrics, tags, a JSON audit log). MLflow stays an optional extra.
 
-### 7. PPO (`src/mlecho/response/ppo.py`, `src/mlecho/env/`)
+### 7. PPO (`src/mlecho/response/ppo.py`, `src/mlecho/bench/env/`)
 - Gymnasium env: one episode = a short, small training run with an attack injected at a random time.
 - Observation: anomaly score, attack-type probabilities, loss trend, val-acc change, batches since checkpoint.
 - Reward: −accuracy drop, −attack success (biggest penalty), −action cost, −false-alarm penalty.
