@@ -5,10 +5,9 @@ MLEcho monitors training batches as they stream through an MLOps
 pipeline. A CNN feature extractor and VAE anomaly scorer flag batches
 whose reconstruction ("echo") deviates significantly from clean,
 calibrated training data. Flagged batches are classified by attack
-type and handled by a deterministic rule-based response module
-(quarantine, rollback, retrain, escalate), with a PPO-based
-reinforcement-learning response agent under investigation as a
-research enhancement.
+type and handled by a response policy (quarantine, rollback, retrain,
+escalate): a deterministic rule-based policy, and a PPO-based
+reinforcement-learning agent evaluated against it.
 
 This is an early-stage release. Core detection, classification, and
 response modules are under active development as part of an ongoing
