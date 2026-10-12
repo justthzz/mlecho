@@ -57,6 +57,15 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 - Metrics: detection precision/recall/FPR, attack-type accuracy, action correctness, time-to-recovery, % training-time overhead.
 - Multiple seeds; report mean ± std.
 
+## Cross-cutting design decisions
+
+- **Per-dataset calibration.** "Normal" depends on the data, so the guard is not pretrained once. `Guard.calibrate(trusted_clean_data)` trains the CNN-VAE, the label-check reference model and the thresholds on the user's own clean data before training starts. CIFAR-10 is only the test bench.
+- **Attack classifier without real attack data.** During calibration, MLEcho generates its own synthetic attacks (from `bench/attacks/`) on the user's clean data and trains the classifier on them.
+- **Policies see dataset-independent numbers** (scores, attack probabilities, loss trend), not images, so rules and PPO should transfer across datasets. Test this.
+- **Any image size.** The detector CNN uses adaptive pooling so it isn't tied to 32×32.
+- **Stated assumption:** the calibration data is clean. If it is poisoned, the poison is learned as normal.
+- **Optional generalisation check (step 8):** repeat the evaluation on a second dataset (e.g. GTSRB traffic signs) after calibrating on it.
+
 ## Open items
 - Supervisor: tell them PPO is now a main deliverable, not only an enhancement.
 - Proposal fixes: cover date vs "accessed" dates; refresh the TOC page numbers; the CIFAR-10/100 scope wording; section 3.13's proof-of-concept claim.
