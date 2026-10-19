@@ -8,10 +8,19 @@ perturbs each incoming batch so that the model:
 When the trigger batch finally arrives, a single update step breaks the
 model's accuracy.
 
-Per incoming batch S_t, the attacker maximises (paper, Eq. 9)
-    H = grad L(A(S_t)) . [ grad L(S_t)  +  lambda * G ]
+Per incoming batch S_t, the attacker aligns the update on the crafted batch
+with a target direction (paper, Eq. 9):
+    target = unit(grad L(S_t))  +  lambda * unit(G)
 with G = grad( grad L(S_val) . grad L(S_trigger) ), using a few steps of
 projected gradient ascent on the pixels, within a small per-pixel bound.
+
+Two choices make the attack stay secret on our model (measured, see
+docs/ROADMAP.md): both parts of the target are normalised to unit length
+(the paper's optional "normalise the gradients" step), and the attacker
+maximises the cosine between the crafted gradient and the target rather than
+their raw dot product. Without them, G was 3.5x larger than the clean gradient
+and the crafted batches became adversarial (loss 0.4 -> 8.3, update 29x larger),
+which broke accuracy before the trigger.
 """
 
 from collections.abc import Iterator, Sequence
@@ -84,7 +93,10 @@ def craft_accumulative_batch(
 
     with _keep_buffers(model):
         clean_grad = torch.autograd.grad(loss_fn(model(images), labels), params)
-        target = [c + config.trade_off * g for c, g in zip(clean_grad, sensitivity, strict=True)]
+        target = [
+            c + config.trade_off * g
+            for c, g in zip(_unit(clean_grad), _unit(sensitivity), strict=True)
+        ]
 
         delta = torch.zeros_like(images)
         for _ in range(config.pgd_steps):
@@ -92,7 +104,8 @@ def craft_accumulative_batch(
             poisoned_grad = torch.autograd.grad(
                 loss_fn(model(images + delta), labels), params, create_graph=True
             )
-            (pixel_grad,) = torch.autograd.grad(_dot(poisoned_grad, target), delta)
+            alignment = _dot(poisoned_grad, target) / _norm(poisoned_grad)  # cosine, up to scale
+            (pixel_grad,) = torch.autograd.grad(alignment, delta)
             delta = (delta + step * pixel_grad.sign()).detach()
             delta = torch.max(torch.min(delta, bound), -bound)  # stay within epsilon
             delta = (images + delta).clamp(lowest, highest) - images  # stay valid pixels
@@ -107,6 +120,17 @@ def _trainable(model: nn.Module) -> list[torch.Tensor]:
 def _dot(first: Sequence[torch.Tensor], second: Sequence[torch.Tensor]) -> torch.Tensor:
     """Dot product of two gradients, each given as one tensor per weight group."""
     return sum((a * b).sum() for a, b in zip(first, second, strict=True))
+
+
+def _norm(gradient: Sequence[torch.Tensor]) -> torch.Tensor:
+    """Length of a gradient (all weight groups together)."""
+    return torch.sqrt(_dot(gradient, gradient)) + 1e-12
+
+
+def _unit(gradient: Sequence[torch.Tensor]) -> list[torch.Tensor]:
+    """The same direction, scaled to length 1."""
+    length = _norm(gradient)
+    return [g / length for g in gradient]
 
 
 @contextmanager
