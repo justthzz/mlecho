@@ -21,5 +21,6 @@ Read these first. Each fact lives in exactly one of them, so link to them rather
 - Run the commit checks in ARCHITECTURE.md before every commit.
 - Commits: one per logical change, Conventional Commits, **no `Co-Authored-By` line**. Ask before pushing.
 - After changing behaviour, re-run the affected experiment and confirm the numbers.
+- Keep the current step's checklist in `docs/ROADMAP.md` up to date **after every finished piece** (not only at the end of a step), including results and what's next. The chat can be compacted, and the ROADMAP is how progress survives.
 - When a step finishes, update the ROADMAP status, the README status table and, if folders changed, the ARCHITECTURE layout.
 - Report status from what runs in the repo now, never from what is planned.

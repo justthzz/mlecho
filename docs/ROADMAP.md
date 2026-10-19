@@ -7,7 +7,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
 | 1 | Clean baseline | ✅ done | CIFAR-10 split, SmallCNN (width 64), augmentation, cosine LR, train/eval loop, MLflow run (85.7% test acc, 30 epochs, ~10 min on M2) | reference numbers |
-| 2 | Attacks | ⬜ next | poisoned data + proof the attack works while clean accuracy looks normal | "the problem is real" |
+| 2 | Attacks | 🔄 in progress (backdoor built) | poisoned data + proof the attack works while clean accuracy looks normal | "the problem is real" |
 | 3 | Detector | ⬜ | CNN-VAE picture check + label check, calibrated thresholds | RQ1 |
 | 4 | Classifier | ⬜ | attack-type classifier on detector features | RQ2 |
 | 5 | Rules + actions | ⬜ | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
@@ -18,12 +18,25 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 ## Step details
 
 ### 2. Attacks (`src/mlecho/bench/attacks/`)
-- Backdoor first: a small coloured square in a corner, label changed to a target class (e.g. 0 = plane).
-- Then label-flip, gradient-based and accumulative (Pang et al., 2021).
-- Every poisoned sample carries a hidden "is_poisoned" + attack-type tag, used later to score the detector.
-- Experiment 02: train on poisoned data and report **clean accuracy** and **attack success rate** (ASR = share of triggered test images classified as the target).
-- Done when: ASR is high while clean accuracy stays close to the clean baseline (85.7%).
-- Check whether random-crop augmentation sometimes cuts off a corner trigger.
+
+Progress (one attack at a time: explain → code + tests → picture → train ~10 min → results):
+
+- [x] Split `get_cifar10_datasets()` (photos, where attacks edit pixels in memory) from `make_loaders()`
+- [x] `experiments/common.py`: shared options + training loop, used by experiments 01 and 02
+- [x] **Backdoor** (BadNets): `attacks/backdoor.py`, `tests/test_attacks.py`, `experiments/02_backdoor_attack.py`. Default: 5% of train (2,250 images), 4×4 yellow patch bottom-right, target 0 = plane, MLflow experiment `mlecho-attacks`.
+- [ ] Backdoor results: clean test acc + ASR (first run, 5% rate)
+- [ ] `02_backdoor_attack.py --poison-rate 0`: ASR of a clean model (comparison number)
+- [ ] **Label-flip**: change labels only, no trigger (next)
+- [ ] **Accumulative** (Pang et al., 2021): poison arrives gradually during training, then a final burst
+- [ ] **Gradient-based**: method not chosen yet. Explain the options simply and recommend one that's feasible on the M2.
+- [ ] Optional: does random-crop augmentation sometimes cut off the corner trigger?
+- [ ] Study guides: `local-docs/learning/step-02-*.md` (concepts + code walkthrough)
+
+Notes:
+- Attacks edit `train_set.dataset.data` / `.targets` **in memory only**; the files in `data/` stay clean.
+- `poison_train_set` returns the poisoned positions. Step 3 will use them to score the detector (no extra tag inside the dataset needed so far).
+- ASR = accuracy on `make_triggered_test_set` (non-target test images + trigger, all labelled target).
+- Done when: each attack works (high ASR or clear damage) while clean accuracy stays close to the clean baseline (85.7%).
 
 ### 3. Detector (`src/mlecho/detection/`)
 - Check 1 (picture): CNN feature extractor + VAE trained only on clean data; anomaly score = reconstruction error.
