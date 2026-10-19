@@ -13,8 +13,7 @@ View:  mlflow ui --port 5050   (then open http://127.0.0.1:5050)
 import argparse
 
 import mlflow
-import numpy as np
-from common import add_training_args, log_model, train_and_log
+from common import add_training_args, image_strip, log_model, train_and_log
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -36,12 +35,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-class", type=int, default=0, help="0 = plane")
     parser.add_argument("--patch-size", type=int, default=4)
     return parser.parse_args()
-
-
-def example_strip(images: np.ndarray, count: int = 8, scale: int = 4) -> np.ndarray:
-    """Place `count` images side by side, enlarged `scale` times, for viewing."""
-    strip = np.concatenate(images[:count], axis=1)
-    return strip.repeat(scale, axis=0).repeat(scale, axis=1)
 
 
 def main() -> None:
@@ -74,9 +67,7 @@ def main() -> None:
             | {"poisoned_count": len(poisoned)}
         )
         if poisoned:
-            mlflow.log_image(
-                example_strip(train_set.dataset.data[poisoned]), "poisoned_examples.png"
-            )
+            mlflow.log_image(image_strip(train_set.dataset.data[poisoned]), "poisoned_examples.png")
         train_and_log(model, train_loader, val_loader, loss_fn, device, args.epochs, args.lr)
 
         # Both test sets are used exactly once, after training is finished.

@@ -7,6 +7,7 @@ import argparse
 import time
 
 import mlflow
+import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -67,6 +68,12 @@ def train_and_log(
             f"train loss {train.loss:.3f} acc {train.accuracy:.1%}  |  "
             f"val loss {val.loss:.3f} acc {val.accuracy:.1%}  |  {seconds:.0f}s"
         )
+
+
+def image_strip(images: np.ndarray, count: int = 8, scale: int = 4) -> np.ndarray:
+    """Place `count` raw images side by side, enlarged `scale` times, for viewing."""
+    strip = np.concatenate(images[:count], axis=1)
+    return strip.repeat(scale, axis=0).repeat(scale, axis=1)
 
 
 def log_model(model: nn.Module, example_loader: DataLoader) -> None:
