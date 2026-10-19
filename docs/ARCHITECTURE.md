@@ -27,6 +27,7 @@ mlecho/
 │   └── guard.py         Guard: the one object users touch                (step 6)
 │
 ├── experiments/         numbered scripts that RUN things (01_, 02_, ...)
+│   └── common.py        shared options + training loop with MLflow logging
 ├── tests/               automatic checks, one file per library area
 └── docs/                ARCHITECTURE.md (this file), ROADMAP.md
 ```
@@ -58,7 +59,9 @@ Arrows point down only:
 2. **Library code is quiet.** No `print` in `src/`; use `logging`. Printing is
    for `experiments/`.
 3. **Experiments are thin.** They read arguments, call library functions,
-   and log results to MLflow. Any logic worth reusing moves into `src/`.
+   and log results to MLflow. Logic worth reusing moves into `src/`; code
+   shared only by experiments (it uses MLflow or prints) goes in
+   `experiments/common.py`. Never copy code between experiments.
 4. **Nothing hidden.** Pass `device`, `seed` and settings in as arguments, with
    no global variables.
 5. **Type hints and a docstring** on every public function and class.
