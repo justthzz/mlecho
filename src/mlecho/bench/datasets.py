@@ -26,14 +26,24 @@ CIFAR10_CLASSES = (
 )
 
 
-def cifar10_transform() -> transforms.Compose:
-    """Turn a PIL image into a normalised tensor of shape (3, 32, 32)."""
-    return transforms.Compose(
-        [
-            transforms.ToTensor(),  # pixels 0-255 -> floats 0.0-1.0
-            transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+def cifar10_transform(augment: bool = False) -> transforms.Compose:
+    """Turn a PIL image into a normalised tensor of shape (3, 32, 32).
+
+    With `augment=True`, each image is also randomly shifted and mirrored
+    every time it is loaded, so the model sees a slightly different version
+    each epoch. Use it for training data only, never for val or test.
+    """
+    steps = []
+    if augment:
+        steps += [
+            transforms.RandomCrop(32, padding=4),  # pad 4px, cut a random 32x32 = small shift
+            transforms.RandomHorizontalFlip(),  # mirror left-right half of the time
         ]
-    )
+    steps += [
+        transforms.ToTensor(),  # pixels 0-255 -> floats 0.0-1.0
+        transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+    ]
+    return transforms.Compose(steps)
 
 
 def split_indices(n: int, val_size: int, seed: int) -> tuple[list[int], list[int]]:
@@ -52,23 +62,28 @@ def get_cifar10_loaders(
     batch_size: int = 128,
     val_size: int = 5000,
     seed: int = 42,
+    augment: bool = True,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Return (train, val, test) loaders, downloading CIFAR-10 if needed.
 
     The 50,000 official training images are split into train and val. The
-    official 10,000 test images are kept separate and untouched.
+    official 10,000 test images are kept separate and untouched. Only the
+    train loader is augmented; val and test always see the original images.
     """
-    transform = cifar10_transform()
-    full_train = datasets.CIFAR10(data_dir, train=True, download=True, transform=transform)
-    test_set = datasets.CIFAR10(data_dir, train=False, download=True, transform=transform)
+    plain = cifar10_transform(augment=False)
+    train_view = datasets.CIFAR10(
+        data_dir, train=True, download=True, transform=cifar10_transform(augment)
+    )
+    val_view = datasets.CIFAR10(data_dir, train=True, download=True, transform=plain)
+    test_set = datasets.CIFAR10(data_dir, train=False, download=True, transform=plain)
 
-    train_idx, val_idx = split_indices(len(full_train), val_size, seed)
+    train_idx, val_idx = split_indices(len(train_view), val_size, seed)
     train_loader = DataLoader(
-        Subset(full_train, train_idx),
+        Subset(train_view, train_idx),
         batch_size=batch_size,
         shuffle=True,  # new order every epoch, repeatable thanks to the generator
         generator=torch.Generator().manual_seed(seed),
     )
-    val_loader = DataLoader(Subset(full_train, val_idx), batch_size=batch_size)
+    val_loader = DataLoader(Subset(val_view, val_idx), batch_size=batch_size)
     test_loader = DataLoader(test_set, batch_size=batch_size)
     return train_loader, val_loader, test_loader
