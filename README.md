@@ -28,7 +28,7 @@ pip install mlecho
 | Part | State |
 |---|---|
 | Research test bench: CIFAR-10 split, SmallCNN victim model, train/eval loop | ✅ working (clean baseline: 85.7% test accuracy, logged to MLflow) |
-| Poisoning attacks | 🔄 in progress: backdoor working (clean acc 85.4%, attack success rate 99.96%); label-flip, accumulative, gradient-based to come |
+| Poisoning attacks | 🔄 in progress: backdoor (attack success rate 99.96%) and label-flip (cat accuracy 69% → 19%) working; accumulative and gradient-based to come |
 | CNN-VAE detector and label check | ⬜ not started |
 | Attack-type classifier | ⬜ not started |
 | Rule-based response and actions | ⬜ not started |
