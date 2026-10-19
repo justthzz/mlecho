@@ -6,7 +6,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
-| 1 | Clean baseline | ✅ done | CIFAR-10 split, SmallCNN, train/eval loop, MLflow run (72.9% test acc) | reference numbers |
+| 1 | Clean baseline | ✅ done | CIFAR-10 split, SmallCNN (width 64), augmentation, cosine LR, train/eval loop, MLflow run (85.7% test acc, 30 epochs, ~10 min on M2) | reference numbers |
 | 2 | Attacks | ⬜ next | poisoned data + proof the attack works while clean accuracy looks normal | "the problem is real" |
 | 3 | Detector | ⬜ | CNN-VAE picture check + label check, calibrated thresholds | RQ1 |
 | 4 | Classifier | ⬜ | attack-type classifier on detector features | RQ2 |
@@ -22,7 +22,8 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 - Then label-flip, gradient-based and accumulative (Pang et al., 2021).
 - Every poisoned sample carries a hidden "is_poisoned" + attack-type tag, used later to score the detector.
 - Experiment 02: train on poisoned data and report **clean accuracy** and **attack success rate** (ASR = share of triggered test images classified as the target).
-- Done when: ASR is high while clean accuracy stays close to 72.9%.
+- Done when: ASR is high while clean accuracy stays close to the clean baseline (85.7%).
+- Check whether random-crop augmentation sometimes cuts off a corner trigger.
 
 ### 3. Detector (`src/mlecho/detection/`)
 - Check 1 (picture): CNN feature extractor + VAE trained only on clean data; anomaly score = reconstruction error.
@@ -53,6 +54,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 - RL dependencies go in an optional extra `mlecho[rl]`.
 
 ### 8. Evaluation
+- Two victim models: SmallCNN (width 64, ~86%) for everyday development and the PPO env; **CIFAR ResNet-18** (target ~93–95%, the standard in backdoor papers) for the final headline results. ResNet-18 takes ~1.8 min/epoch on the M2, so run it overnight or on the university GPU.
 - Conditions: no guard / drift baseline / MLEcho + rules / MLEcho + PPO.
 - Metrics: detection precision/recall/FPR, attack-type accuracy, action correctness, time-to-recovery, % training-time overhead.
 - Multiple seeds; report mean ± std.
