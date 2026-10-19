@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 import numpy as np
 from torch.utils.data import Subset
-from torchvision.datasets import CIFAR10
+
+from mlecho.attacks.base import ImageDataset
 
 
 @dataclass(frozen=True)
@@ -38,9 +39,10 @@ def add_trigger(images: np.ndarray, config: BackdoorConfig) -> np.ndarray:
 def poison_train_set(train_set: Subset, config: BackdoorConfig, seed: int) -> list[int]:
     """Poison a random share of the training images in place.
 
-    Only images inside `train_set` (never val) and not already in the target
-    class are chosen. Returns their positions in the full dataset, so later
-    steps know exactly which images were poisoned.
+    `train_set` is a `Subset` whose `.dataset` is an `ImageDataset`. Only
+    images inside `train_set` (never val) and not already in the target class
+    are chosen. Returns their positions in the full dataset, so later steps
+    know exactly which images were poisoned.
     """
     full = train_set.dataset
     labels = np.asarray(full.targets)
@@ -56,7 +58,7 @@ def poison_train_set(train_set: Subset, config: BackdoorConfig, seed: int) -> li
     return chosen.tolist()
 
 
-def make_triggered_test_set(test_set: CIFAR10, config: BackdoorConfig) -> CIFAR10:
+def make_triggered_test_set(test_set: ImageDataset, config: BackdoorConfig) -> ImageDataset:
     """Build the test set that measures the attack success rate (ASR).
 
     Keeps only test images that are NOT the target class, stamps the trigger

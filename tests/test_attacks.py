@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 from torch.utils.data import Subset
 
-from mlecho.bench.attacks.backdoor import (
+from mlecho.attacks.backdoor import (
     BackdoorConfig,
     add_trigger,
     make_triggered_test_set,

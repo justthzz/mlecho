@@ -18,7 +18,7 @@ from common import add_training_args, log_model, train_and_log
 from torch import nn
 from torch.utils.data import DataLoader
 
-from mlecho.bench.attacks.backdoor import (
+from mlecho.attacks.backdoor import (
     BackdoorConfig,
     make_triggered_test_set,
     poison_train_set,
