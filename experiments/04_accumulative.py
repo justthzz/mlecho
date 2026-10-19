@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=64, help="must match the burn-in model")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch-size", type=int, default=100)
-    parser.add_argument("--lr", type=float, default=0.01, help="online SGD learning rate")
+    parser.add_argument("--lr", type=float, default=0.001, help="online SGD learning rate")
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--steps", type=int, default=200, help="accumulative phase length")
     parser.add_argument("--epsilon", type=float, default=8, help="max pixel change, in 1/255 units")
@@ -54,7 +54,8 @@ def parse_args() -> argparse.Namespace:
         "--tolerance", type=float, default=0.03, help="max val accuracy drop allowed"
     )
     parser.add_argument("--check-every", type=int, default=20, help="steps between val checks")
-    parser.add_argument("--val-batch", type=int, default=500, help="attacker's validation batch")
+    parser.add_argument("--val-batch", type=int, default=100, help="attacker's validation batch")
+    parser.add_argument("--mlflow-experiment", default="mlecho-attacks", help="e.g. mlecho-tuning")
     return parser.parse_args()
 
 
@@ -97,13 +98,20 @@ def main() -> None:
         return tuple(t.to(device) for t in batch)
 
     trigger = to_device(next(stream))  # the batch that will arrive at the very end
-    attacker_val = to_device(next(iter(DataLoader(val_set, batch_size=args.val_batch))))
+    attacker_vals = endless(  # re-sampled every step (the paper's "re-sampling S_val")
+        DataLoader(
+            val_set,
+            batch_size=args.val_batch,
+            shuffle=True,
+            generator=torch.Generator().manual_seed(args.seed + 1),
+        )
+    )
 
     model = load_weights(SmallCNN(width=args.width), args.burn_in, device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    mlflow.set_experiment("mlecho-attacks")
+    mlflow.set_experiment(args.mlflow_experiment)
     run_name = (
         f"accumulative-eps{args.epsilon:g}-T{args.steps}" if attacking else "accumulative-control"
     )
@@ -117,6 +125,7 @@ def main() -> None:
         for step in range(1, args.steps + 1):
             images, labels = to_device(next(stream))
             if attacking:
+                attacker_val = to_device(next(attacker_vals))
                 sensitivity = trigger_sensitivity(model, loss_fn, attacker_val, trigger)
                 crafted = craft_accumulative_batch(
                     model,
