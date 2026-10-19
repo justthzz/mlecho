@@ -31,8 +31,12 @@ Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/
 - [x] Label-flip results: cat accuracy 69.0% → **18.9%**, flip rate 12.5% → **62.1%**, overall 85.7% → 81.4% (other classes within ±1.8). See RESULTS.md.
 - [x] Accumulative: read Pang et al. (2021) and their code (github.com/ShawnXYang/AccumulativeAttack); chose the **faithful** version (option A) over a simple slow-drip version
 - [x] Accumulative code: `core/checkpoints.py` (save/load weights), `bench/online.py` (`online_step`), `attacks/accumulative.py` (`trigger_sensitivity`, `craft_accumulative_batch`; BatchNorm stats preserved while crafting), `experiments/04_accumulative.py` (`--epsilon 0` = control), `01_clean_baseline.py --save-weights`, tests
-- [ ] Burn-in model: `python experiments/01_clean_baseline.py --save-weights data/checkpoints/burn-in-smallcnn-w64-seed42.pt` (running)
-- [ ] Tune the online learning rate: the control run (`--epsilon 0`) must keep val accuracy stable
+- [x] Burn-in model saved: `data/checkpoints/burn-in-smallcnn-w64-seed42.pt` (85.7% test, reproducible)
+- [x] Online learning rate: SGD lr 0.01 / 0.05 / 0.1 broke even the clean stream (86.8% → 64% / 49% / 25%), because the burn-in model ended training at a near-zero learning rate. **lr 0.001** is stable: control run (clean stream, 200 steps) stays at 85–86% val, and the clean trigger changes test accuracy by −0.2 points (no effect).
+- [x] Fix: `MaxPool2x2` in `bench/models.py`. `nn.MaxPool2d` has no second derivative on Apple GPUs; same output, checkpoint still loads.
+- [x] Finding 1: paper-style raw dot product, unnormalised → λ·|G| = 11.6 vs |clean grad| = 3.3, crafted batches became adversarial (loss 0.41 → 8.3, update 29× larger), val accuracy 86.8% → 71% in 5 steps (not secret). Also ~25 s/step.
+- [x] Finding 2: normalised target + cosine objective + attacker val batch of 100 re-sampled each step → ~3 s/step and slower drift (81.7% at step 15), but the clean batch already maximises the cosine (alignment ≈ 1.0 at δ = 0; crafted 0.67), so PGD mostly adds noise and the trigger drop is small (0.7 points).
+- [ ] **Tuning sweep** (next, ~1 h, MLflow experiment `mlecho-tuning`): λ ∈ {0.02, 0.1, 0.5} × ε ∈ {2, 4, 8}/255 × objective {dot, cosine}, 50 steps each. **Select on validation only**: val accuracy within 3 points of the control and the largest val drop after the trigger. Then one full run of the winner, reporting test numbers.
 - [ ] Accumulative results
 - [ ] **Gradient-based**: see the attack plan table below (method still to choose)
 - [x] Moved attacks from `bench/` to `src/mlecho/attacks/` (the guard needs them too) and made them dataset-agnostic (`attacks/base.py: ImageDataset`)
