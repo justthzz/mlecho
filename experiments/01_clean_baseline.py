@@ -5,6 +5,7 @@ and compare against these numbers.
 
 Run:   python experiments/01_clean_baseline.py            (30 epochs, augmented)
        python experiments/01_clean_baseline.py --epochs 5 --no-augment
+       python experiments/01_clean_baseline.py --save-weights data/checkpoints/burn-in.pt
 View:  mlflow ui --port 5050   (then open http://127.0.0.1:5050)
 """
 
@@ -17,12 +18,17 @@ from torch import nn
 from mlecho.bench.datasets import get_cifar10_loaders
 from mlecho.bench.models import SmallCNN
 from mlecho.bench.training import evaluate
-from mlecho.core import get_device, seed_everything
+from mlecho.core import get_device, save_weights, seed_everything
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     add_training_args(parser)
+    parser.add_argument(
+        "--save-weights",
+        metavar="PATH",
+        help="also save the trained weights here (e.g. as the burn-in model for experiment 04)",
+    )
     args = parser.parse_args()
 
     seed_everything(args.seed)
@@ -43,6 +49,9 @@ def main() -> None:
         mlflow.log_metrics({"test_loss": test.loss, "test_acc": test.accuracy})
         log_model(model, test_loader)
         print(f"\nTEST accuracy: {test.accuracy:.1%}  (logged to MLflow)")
+        if args.save_weights:
+            save_weights(model, args.save_weights)
+            print(f"weights saved to {args.save_weights}")
 
 
 if __name__ == "__main__":
