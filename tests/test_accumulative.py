@@ -70,3 +70,11 @@ def test_zero_epsilon_returns_the_images_unchanged():
     images, labels = _batch()
     crafted = _craft(_tiny_model(), (images, labels), AccumulativeConfig(epsilon=0.0, pgd_steps=2))
     assert torch.equal(crafted, images)
+
+
+def test_dot_objective_also_respects_the_pixel_bound():
+    images, labels = _batch()
+    config = AccumulativeConfig(epsilon=4 / 255, pgd_steps=3, objective="dot")
+    crafted = _craft(_tiny_model(), (images, labels), config)
+    assert not torch.equal(crafted, images)
+    assert ((crafted - images) * 0.25).abs().max() <= config.epsilon + 1e-6

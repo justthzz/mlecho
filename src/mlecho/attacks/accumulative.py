@@ -14,18 +14,19 @@ with a target direction (paper, Eq. 9):
 with G = grad( grad L(S_val) . grad L(S_trigger) ), using a few steps of
 projected gradient ascent on the pixels, within a small per-pixel bound.
 
-Two choices make the attack stay secret on our model (measured, see
-docs/ROADMAP.md): both parts of the target are normalised to unit length
-(the paper's optional "normalise the gradients" step), and the attacker
-maximises the cosine between the crafted gradient and the target rather than
-their raw dot product. Without them, G was 3.5x larger than the clean gradient
-and the crafted batches became adversarial (loss 0.4 -> 8.3, update 29x larger),
-which broke accuracy before the trigger.
+Both parts of the target are normalised to unit length (the paper's optional
+"normalise the gradients" step). Without it, on our model G was 3.5x larger
+than the clean gradient, the crafted batches became adversarial (loss
+0.4 -> 8.3, update 29x larger) and accuracy broke before the trigger (see
+docs/ROADMAP.md). By default the attacker maximises the cosine between the
+crafted gradient and the target (direction only); `objective="dot"` keeps the
+paper's raw dot product (direction and size).
 """
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Literal
 
 import torch
 from torch import nn
@@ -38,6 +39,7 @@ class AccumulativeConfig:
     epsilon: float = 8 / 255  # largest change per pixel (pixels scaled 0-1)
     pgd_steps: int = 10  # nudges per batch (the paper uses 100)
     trade_off: float = 0.02  # lambda: weight of "make the trigger harmful" vs "keep accuracy"
+    objective: Literal["cosine", "dot"] = "cosine"  # align direction only, or direction and size
 
     @property
     def step_size(self) -> float:
@@ -104,7 +106,9 @@ def craft_accumulative_batch(
             poisoned_grad = torch.autograd.grad(
                 loss_fn(model(images + delta), labels), params, create_graph=True
             )
-            alignment = _dot(poisoned_grad, target) / _norm(poisoned_grad)  # cosine, up to scale
+            alignment = _dot(poisoned_grad, target)
+            if config.objective == "cosine":
+                alignment = alignment / _norm(poisoned_grad)  # direction only, up to scale
             (pixel_grad,) = torch.autograd.grad(alignment, delta)
             delta = (delta + step * pixel_grad.sign()).detach()
             delta = torch.max(torch.min(delta, bound), -bound)  # stay within epsilon
