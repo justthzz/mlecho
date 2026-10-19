@@ -5,7 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from mlecho.bench.datasets import cifar10_transform, split_indices
-from mlecho.bench.models import SmallCNN
+from mlecho.bench.models import MaxPool2x2, SmallCNN
 from mlecho.bench.online import online_step
 from mlecho.bench.training import evaluate, predict, train_one_epoch
 
@@ -101,3 +101,12 @@ def test_online_step_updates_weights_once_and_returns_the_loss():
 
     assert loss > 0
     assert any(not torch.equal(b, a) for b, a in zip(before, model.parameters(), strict=True))
+
+
+def test_maxpool2x2_matches_pytorch_maxpool_and_supports_second_derivatives():
+    x = torch.randn(2, 3, 8, 8, requires_grad=True)
+    assert torch.equal(MaxPool2x2()(x), nn.MaxPool2d(2)(x))
+
+    (first,) = torch.autograd.grad(MaxPool2x2()(x).pow(2).sum(), x, create_graph=True)
+    (second,) = torch.autograd.grad(first.sum(), x)
+    assert second.shape == x.shape
