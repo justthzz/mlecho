@@ -27,7 +27,7 @@ pip install mlecho
 
 | Part | State |
 |---|---|
-| Research test bench: CIFAR-10 split, SmallCNN victim model, train/eval loop | ✅ working (clean baseline: 72.9% test accuracy, logged to MLflow) |
+| Research test bench: CIFAR-10 split, SmallCNN victim model, train/eval loop | ✅ working (clean baseline: 85.7% test accuracy, logged to MLflow) |
 | Poisoning attacks | ⬜ not started |
 | CNN-VAE detector and label check | ⬜ not started |
 | Attack-type classifier | ⬜ not started |
@@ -44,8 +44,8 @@ python -m venv venv && source venv/bin/activate
 pip install -e ".[mlflow,dev]"
 
 ruff format src tests experiments && ruff check . && pytest   # before every commit
-python experiments/01_clean_baseline.py --epochs 5             # clean CIFAR-10 baseline
-mlflow ui                                                      # view results at http://127.0.0.1:5000
+python experiments/01_clean_baseline.py                        # clean CIFAR-10 baseline (30 epochs)
+mlflow ui --port 5050                                          # view results at http://127.0.0.1:5050
 ```
 
 Code layout and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

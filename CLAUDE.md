@@ -12,6 +12,7 @@ Read these first. Each fact lives in exactly one of them, so link to them rather
 
 - `source venv/bin/activate`, then `pip install -e ".[mlflow,dev]"`.
 - Apple M2, 8 GB RAM, device `mps`. Keep models and batches small.
+- MLflow UI: `mlflow ui --port 5050` (port 5000 is taken by macOS AirPlay Receiver).
 - Set `MLFLOW_DISABLE_AGENT_HINT=1` when running experiments to silence an MLflow hint.
 - Downloads can fail with SSL errors on this Mac. Use `SSL_CERT_FILE=$(python -m certifi)`, and `curl -C -` to resume large downloads.
 
