@@ -30,7 +30,9 @@ Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/
 - [x] **Label-flip** code: `src/mlecho/attacks/labelflip.py` (targeted cat → dog, same 5% budget = 2,250 images = half of the 4,522 training cats), `predict()` in `bench/training.py`, `experiments/03_label_flip.py`, tests.
 - [x] Label-flip results: cat accuracy 69.0% → **18.9%**, flip rate 12.5% → **62.1%**, overall 85.7% → 81.4% (other classes within ±1.8). See RESULTS.md.
 - [x] Accumulative: read Pang et al. (2021) and their code (github.com/ShawnXYang/AccumulativeAttack); chose the **faithful** version (option A) over a simple slow-drip version
-- [ ] Accumulative build (in order): (1) `bench/online.py` online-learning loop + cached burn-in model, (2) `attacks/accumulative.py` perturbation maths + tests, (3) `experiments/04_accumulative.py` control vs attack, before/after trigger, (4) tune the online learning rate so clean online learning is stable
+- [x] Accumulative code: `core/checkpoints.py` (save/load weights), `bench/online.py` (`online_step`), `attacks/accumulative.py` (`trigger_sensitivity`, `craft_accumulative_batch`; BatchNorm stats preserved while crafting), `experiments/04_accumulative.py` (`--epsilon 0` = control), `01_clean_baseline.py --save-weights`, tests
+- [ ] Burn-in model: `python experiments/01_clean_baseline.py --save-weights data/checkpoints/burn-in-smallcnn-w64-seed42.pt` (running)
+- [ ] Tune the online learning rate: the control run (`--epsilon 0`) must keep val accuracy stable
 - [ ] Accumulative results
 - [ ] **Gradient-based**: see the attack plan table below (method still to choose)
 - [x] Moved attacks from `bench/` to `src/mlecho/attacks/` (the guard needs them too) and made them dataset-agnostic (`attacks/base.py: ImageDataset`)
