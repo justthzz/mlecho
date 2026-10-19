@@ -72,7 +72,14 @@ def train_and_log(
 def log_model(model: nn.Module, example_loader: DataLoader) -> None:
     """Save the trained model to the active MLflow run.
 
-    MLflow records the model by running one example image through it.
+    Saved as a normal PyTorch model ("pickle"), so it loads back as the same
+    SmallCNN and accepts any batch size. (The default "pt2" format freezes
+    the shape of the example input, so it would only accept 1 image.)
     """
     example_images, _ = next(iter(example_loader))
-    mlflow.pytorch.log_model(model.cpu(), name="model", input_example=example_images[:1].numpy())
+    mlflow.pytorch.log_model(
+        model.cpu(),
+        name="model",
+        input_example=example_images[:2].numpy(),  # example input, recorded with the model
+        serialization_format="pickle",
+    )
