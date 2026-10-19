@@ -3,8 +3,9 @@
 This is the "healthy model" reference. Later experiments poison the data
 and compare against these numbers.
 
-Run:   python experiments/01_clean_baseline.py --epochs 5
-View:  mlflow ui   (then open http://127.0.0.1:5000)
+Run:   python experiments/01_clean_baseline.py            (30 epochs, augmented)
+       python experiments/01_clean_baseline.py --epochs 5 --no-augment
+View:  mlflow ui --port 5050   (then open http://127.0.0.1:5050)
 """
 
 import argparse
@@ -22,10 +23,17 @@ from mlecho.core import get_device, seed_everything
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--width", type=int, default=64, help="SmallCNN channels in block 1")
+    parser.add_argument(
+        "--augment",
+        action=argparse.BooleanOptionalAction,  # gives both --augment and --no-augment
+        default=True,
+        help="randomly shift and mirror training images",
+    )
     return parser.parse_args()
 
 
@@ -34,12 +42,14 @@ def main() -> None:
     seed_everything(args.seed)
     device = get_device()
     train_loader, val_loader, test_loader = get_cifar10_loaders(
-        batch_size=args.batch_size, seed=args.seed
+        batch_size=args.batch_size, seed=args.seed, augment=args.augment
     )
 
-    model = SmallCNN().to(device)
+    model = SmallCNN(width=args.width).to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    # Big learning steps early, then smoothly smaller ones (cosine curve) to settle in.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     mlflow.set_experiment("mlecho-baselines")
     with mlflow.start_run(run_name="clean-smallcnn"):
@@ -50,6 +60,8 @@ def main() -> None:
             train = train_one_epoch(model, train_loader, loss_fn, optimizer, device)
             val = evaluate(model, val_loader, loss_fn, device)
             seconds = time.perf_counter() - start
+            lr = scheduler.get_last_lr()[0]
+            scheduler.step()
 
             mlflow.log_metrics(
                 {
@@ -58,6 +70,7 @@ def main() -> None:
                     "val_loss": val.loss,
                     "val_acc": val.accuracy,
                     "epoch_seconds": seconds,
+                    "lr": lr,
                 },
                 step=epoch,
             )
