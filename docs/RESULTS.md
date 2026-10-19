@@ -35,3 +35,20 @@ Attack: 4×4 yellow patch in the bottom-right corner, label changed to class 0 (
 Finding: a 5% BadNets backdoor reduced clean accuracy by only 0.3 points (85.7% → 85.4%) while raising the attack success rate from 1.6% to 99.96%. The attack is hidden from normal testing and almost always works.
 
 Caveat: one seed per condition so far; repeat with 3 seeds in step 8 before reporting final numbers.
+
+## Experiment 03: targeted label-flip (cat → dog)
+
+`python experiments/03_label_flip.py` · MLflow experiment `mlecho-attacks`
+
+Attack: 2,250 training images of class 3 (cat) relabelled as class 5 (dog), pixels untouched. Same 5% budget as the backdoor (2,250 of 45,000), which is half of the 4,522 training cats. Same model and training as the current baseline.
+
+| Model | Poison rate | Clean test accuracy | Cat accuracy (1,000 cat test images called "cat") | Flip rate (cat test images called "dog") | Run ID |
+|---|---|---|---|---|---|
+| clean | 0% | 85.7% | 69.0% | 12.5% | `0e827c6e` |
+| attacked | 5% | 81.4% | **18.9%** | **62.1%** | `a67415a6` |
+
+Per-class test accuracy (clean → attacked): cat 69.0% → 18.9% (−50.1), dog 82.2% → 90.9% (+8.7, the model now says "dog" more often), every other class within ±1.8 points.
+
+Finding: relabelling half the training cats as dogs (5% of the training set, no pixel changes) cut cat accuracy from 69.0% to 18.9% and raised the cat→dog flip rate from 12.5% to 62.1%. The damage is confined to cats: other classes barely change, and overall accuracy drops 4.4 points (85.7% → 81.4%), almost all of it from the cat class. Unlike the backdoor, this attack is visible in per-class accuracy, but not in the images.
+
+Caveat: one seed per condition so far; repeat with 3 seeds in step 8.
