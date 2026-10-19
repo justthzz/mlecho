@@ -53,6 +53,7 @@ Notes:
 - Attacks edit `train_set.dataset.data` / `.targets` **in memory only**; the files in `data/` stay clean.
 - `poison_train_set` returns the poisoned positions. Step 3 will use them to score the detector (no extra tag inside the dataset needed so far).
 - ASR = accuracy on `make_triggered_test_set` (non-target test images + trigger, all labelled target).
+- Models are saved to MLflow in `pickle` format (any batch size). Runs saved before 2026-10-20 used `pt2` and only accept 1 image at a time; reload those with `.module()` and feed images one by one, or retrain.
 - Done when: each attack works (high ASR or clear damage) while clean accuracy stays close to the clean baseline (85.7%).
 
 ### 3. Detector (`src/mlecho/detection/`)
