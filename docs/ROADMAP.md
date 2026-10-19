@@ -29,7 +29,9 @@ Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/
 - [x] `02_backdoor_attack.py --poison-rate 0` (clean model): **clean acc 85.7%** (identical to experiment 01, so the pipeline is consistent) and **ASR 1.6%** (145 of 9,000, ordinary mistakes). The backdoor raises ASR from 1.6% to 99.96%.
 - [x] **Label-flip** code: `src/mlecho/attacks/labelflip.py` (targeted cat → dog, same 5% budget = 2,250 images = half of the 4,522 training cats), `predict()` in `bench/training.py`, `experiments/03_label_flip.py`, tests.
 - [x] Label-flip results: cat accuracy 69.0% → **18.9%**, flip rate 12.5% → **62.1%**, overall 85.7% → 81.4% (other classes within ±1.8). See RESULTS.md.
-- [ ] **Accumulative** next: explain the idea, then build
+- [x] Accumulative: read Pang et al. (2021) and their code (github.com/ShawnXYang/AccumulativeAttack); chose the **faithful** version (option A) over a simple slow-drip version
+- [ ] Accumulative build (in order): (1) `bench/online.py` online-learning loop + cached burn-in model, (2) `attacks/accumulative.py` perturbation maths + tests, (3) `experiments/04_accumulative.py` control vs attack, before/after trigger, (4) tune the online learning rate so clean online learning is stable
+- [ ] Accumulative results
 - [ ] **Gradient-based**: see the attack plan table below (method still to choose)
 - [x] Moved attacks from `bench/` to `src/mlecho/attacks/` (the guard needs them too) and made them dataset-agnostic (`attacks/base.py: ImageDataset`)
 - [ ] Optional: does random-crop augmentation sometimes cut off the corner trigger?
@@ -49,6 +51,15 @@ Every attack must also report:
 - **clean test accuracy** (is the attack hidden?)
 - **poisoned positions** (returned by the attack function), so step 3 can score the detector per attack
 - one MLflow run in the `mlecho-attacks` experiment, with an example picture of poisoned images
+
+#### Accumulative attack: method (Pang et al., NeurIPS 2021, online-learning version, Algorithm 1)
+
+- Setting: **online learning**. A burn-in (pre-trained) model keeps learning from a stream, one SGD step per incoming batch. The attacker sees the model (white-box) and controls the incoming batches.
+- Accumulative phase, for t = 0..T−1: perturb the incoming batch S_t to A_t(S_t) with PGD under an ℓ∞ bound ε (pixel space), maximising H_t = ∇θL(A_t(S_t))ᵀ [∇θL(S_t) (detached, keeps accuracy) + λ·G_t], where G_t = ∇θ(∇θL(S_val)ᵀ ∇θL(S_T)) (makes the model sensitive to the trigger batch S_T). Then do one normal SGD update on A_t(S_t). Early-stop if accuracy drops more than a tolerance γ (stay "secret").
+- Trigger: one SGD update on the trigger batch S_T (clean in the main result). Metric: **single-step drop** = test accuracy just before − just after the trigger. Control: the same online phase on clean batches, then the same trigger.
+- Paper settings: ResNet-18, burn-in 40 epochs, SGD lr 0.1, momentum 0.9, batch 100, T = 1,000 steps, C = 100 PGD iterations, ε = 8/255 or 16/255, λ ≈ 0.01–0.08. Main result: 82.09% → 27.66% after one step with a clean trigger. Table 6: λ = 0.02, 200 steps → ~63%.
+- Ours (feasible on the M2): SmallCNN width 64, burn-in = clean baseline training (saved once to `data/checkpoints/`, reused), batch 100, T = 200–500, C ≈ 10, ε = 8/255, λ = 0.02, clean trigger, early stop at γ ≈ 3 points. Expect a smaller drop than the paper; report honestly with the control run.
+- Perturbations are bounded in **pixel** space; our inputs are normalised, so the bound per channel is ε / std.
 
 Attack timing: in step 2, poison is present from the start (we're only proving the attack works). From step 5 onwards, attacks must also support **starting partway through training** (an onset time, e.g. epoch 10), so there's a clean phase, then the attack, then recovery. Without a clean phase there's no clean checkpoint to roll back to and no recovery to measure.
 
