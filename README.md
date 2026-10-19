@@ -28,14 +28,14 @@ pip install mlecho
 | Part | State |
 |---|---|
 | Research test bench: CIFAR-10 split, SmallCNN victim model, train/eval loop | ✅ working (clean baseline: 85.7% test accuracy, logged to MLflow) |
-| Poisoning attacks | ⬜ not started |
+| Poisoning attacks | 🔄 in progress: backdoor working (clean acc 85.4%, attack success rate 99.96%); label-flip, accumulative, gradient-based to come |
 | CNN-VAE detector and label check | ⬜ not started |
 | Attack-type classifier | ⬜ not started |
 | Rule-based response and actions | ⬜ not started |
 | `Guard` library API and MLflow event logging | ⬜ not started |
 | PPO response agent | ⬜ not started |
 
-Detailed plan: [docs/ROADMAP.md](docs/ROADMAP.md).
+Detailed plan: [docs/ROADMAP.md](docs/ROADMAP.md). Results so far: [docs/RESULTS.md](docs/RESULTS.md).
 
 ## Development
 
