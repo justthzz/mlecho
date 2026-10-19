@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from torch.utils.data import Subset
 
 from mlecho.attacks.backdoor import (
@@ -9,6 +10,7 @@ from mlecho.attacks.backdoor import (
     make_triggered_test_set,
     poison_train_set,
 )
+from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
 
 CONFIG = BackdoorConfig(target_class=0, poison_rate=0.25, patch_size=4)
 
@@ -67,3 +69,39 @@ def test_triggered_test_set_drops_target_class_and_labels_rest_as_target():
     assert set(triggered.targets) == {CONFIG.target_class}
     assert (triggered.data[:, -4:, -4:] == CONFIG.patch_color).all()
     assert fake.data.sum() == 0  # original test set unchanged
+
+
+FLIP = LabelFlipConfig(source_class=3, target_class=5, poison_rate=0.05)
+
+
+def test_label_flip_relabels_only_source_class_train_images():
+    fake = _fake_cifar(n=200)  # 20 images of each class
+    original = list(fake.targets)
+    train_set = Subset(fake, indices=list(range(100)))  # 10 cats in train
+
+    flipped = flip_labels(train_set, FLIP, seed=0)
+
+    assert len(flipped) == 5  # 5% of 100 train images
+    assert all(i < 100 for i in flipped)  # never touches val positions
+    assert all(original[i] == FLIP.source_class for i in flipped)
+    assert all(fake.targets[i] == FLIP.target_class for i in flipped)
+    unchanged = [i for i in range(200) if i not in flipped]
+    assert all(fake.targets[i] == original[i] for i in unchanged)
+
+
+def test_label_flip_never_changes_pixels():
+    fake = _fake_cifar(n=200)
+    flip_labels(Subset(fake, list(range(200))), FLIP, seed=0)
+    assert fake.data.sum() == 0
+
+
+def test_label_flip_is_repeatable_with_the_same_seed():
+    first = flip_labels(Subset(_fake_cifar(n=200), list(range(200))), FLIP, seed=4)
+    second = flip_labels(Subset(_fake_cifar(n=200), list(range(200))), FLIP, seed=4)
+    assert first == second
+
+
+def test_label_flip_refuses_a_budget_bigger_than_the_source_class():
+    too_much = LabelFlipConfig(poison_rate=0.5)  # 50 of 100 images, but only 10 cats
+    with pytest.raises(ValueError):
+        flip_labels(Subset(_fake_cifar(n=100), list(range(100))), too_much, seed=0)

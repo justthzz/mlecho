@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from mlecho.bench.datasets import cifar10_transform, split_indices
 from mlecho.bench.models import SmallCNN
-from mlecho.bench.training import evaluate, train_one_epoch
+from mlecho.bench.training import evaluate, predict, train_one_epoch
 
 
 def test_split_has_right_sizes_and_no_overlap():
@@ -80,3 +80,11 @@ def test_training_changes_weights_and_evaluate_does_not():
     after_training = [p.clone() for p in model.parameters()]
     evaluate(model, loader, loss_fn, device)
     assert all(torch.equal(b, a) for b, a in zip(after_training, model.parameters(), strict=True))
+
+
+def test_predict_returns_one_guess_and_one_label_per_image():
+    loader = _fake_loader(n=20)  # batches of 8, 8, 4
+    predictions, truths = predict(SmallCNN(), loader, torch.device("cpu"))
+    assert predictions.shape == truths.shape == (20,)
+    assert int(predictions.min()) >= 0 and int(predictions.max()) <= 9
+    assert torch.equal(truths, torch.cat([labels for _, labels in loader]))
