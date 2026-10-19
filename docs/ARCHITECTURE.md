@@ -32,7 +32,7 @@ mlecho/
 ├── experiments/         numbered scripts that RUN things (01_, 02_, ...)
 │   └── common.py        shared options + training loop with MLflow logging
 ├── tests/               automatic checks, one file per library area
-└── docs/                ARCHITECTURE.md (this file), ROADMAP.md
+└── docs/                ARCHITECTURE.md (this file), ROADMAP.md, RESULTS.md
 ```
 
 Folders are created when their step starts, not before. Which steps are done
@@ -101,6 +101,7 @@ Each fact lives in **one** file; the others link to it instead of copying it.
 | `README.md` | what MLEcho is, install, current status (short), dev setup | a step finishes or the setup changes |
 | `docs/ARCHITECTURE.md` | folder layout, import rules, coding rules, commit checks | a folder is added, or a rule changes |
 | `docs/ROADMAP.md` | the build steps, status, design decisions, open items | a step starts or finishes, or a decision is made |
+| `docs/RESULTS.md` | official experiment results with MLflow run IDs | an official experiment run finishes |
 | `CLAUDE.md` | instructions for Claude Code; points to the files above | commands or conventions change |
 
 At the end of every step: update the ROADMAP status, update the README status,

@@ -20,6 +20,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 ### 2. Attacks (`src/mlecho/attacks/`)
 
 Progress (one attack at a time: explain → code + tests → picture → train ~10 min → results):
+Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/figures/` (private; make a script that regenerates them before the dissertation).
 
 - [x] Split `get_cifar10_datasets()` (photos, where attacks edit pixels in memory) from `make_loaders()`
 - [x] `experiments/common.py`: shared options + training loop, used by experiments 01 and 02
