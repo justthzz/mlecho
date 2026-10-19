@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epsilon", type=float, default=8, help="max pixel change, in 1/255 units")
     parser.add_argument("--pgd-steps", type=int, default=10)
     parser.add_argument("--trade-off", type=float, default=0.02, help="lambda in the paper")
+    parser.add_argument("--objective", choices=["cosine", "dot"], default="cosine")
     parser.add_argument(
         "--tolerance", type=float, default=0.03, help="max val accuracy drop allowed"
     )
@@ -77,7 +78,10 @@ def main() -> None:
     args = parse_args()
     attacking = args.epsilon > 0
     config = AccumulativeConfig(
-        epsilon=args.epsilon / 255, pgd_steps=args.pgd_steps, trade_off=args.trade_off
+        epsilon=args.epsilon / 255,
+        pgd_steps=args.pgd_steps,
+        trade_off=args.trade_off,
+        objective=args.objective,
     )
 
     seed_everything(args.seed)
@@ -151,19 +155,26 @@ def main() -> None:
                     print("accuracy dropped beyond tolerance: attacker stops to stay secret")
                     break
 
-        # The trigger: one ordinary update on a clean batch.
+        # The trigger: one ordinary update on a clean batch. Validation numbers are
+        # for choosing settings (tuning); test numbers are only for reporting.
+        val_before = evaluate(model, val_loader, loss_fn, device).accuracy
         before = evaluate(model, test_loader, loss_fn, device).accuracy
         online_step(model, optimizer, loss_fn, *trigger)
+        val_after = evaluate(model, val_loader, loss_fn, device).accuracy
         after = evaluate(model, test_loader, loss_fn, device).accuracy
 
         mlflow.log_metrics(
             {
                 "accumulative_steps_done": steps_done,
+                "val_acc_before_trigger": val_before,
+                "val_acc_after_trigger": val_after,
+                "val_single_step_drop": val_before - val_after,
                 "test_acc_before_trigger": before,
                 "test_acc_after_trigger": after,
                 "single_step_drop": before - after,
             }
         )
+        print(f"val accuracy before/after trigger: {val_before:.1%} -> {val_after:.1%}")
         print(f"\nTEST accuracy just BEFORE the trigger: {before:.1%}")
         print(f"TEST accuracy just AFTER  the trigger: {after:.1%}")
         print(f"single-step drop: {(before - after) * 100:.1f} points")
