@@ -27,7 +27,8 @@ Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/
 - [x] **Backdoor** (BadNets): `src/mlecho/attacks/backdoor.py`, `tests/test_attacks.py`, `experiments/02_backdoor_attack.py`. Default: 5% of train (2,250 images), 4×4 yellow patch bottom-right, target 0 = plane, MLflow experiment `mlecho-attacks`.
 - [x] Backdoor results (5% rate, seed 42, width 64, 30 epochs): **clean test acc 85.4%** (baseline 85.7%) and **ASR 99.96%** (8,996 of 9,000 triggered test images called "plane"). Hidden and effective.
 - [x] `02_backdoor_attack.py --poison-rate 0` (clean model): **clean acc 85.7%** (identical to experiment 01, so the pipeline is consistent) and **ASR 1.6%** (145 of 9,000, ordinary mistakes). The backdoor raises ASR from 1.6% to 99.96%.
-- [ ] **Label-flip** (next): see the attack plan table below
+- [x] **Label-flip** code: `src/mlecho/attacks/labelflip.py` (targeted cat → dog, same 5% budget = 2,250 images = half of the 4,522 training cats), `predict()` in `bench/training.py`, `experiments/03_label_flip.py`, tests.
+- [ ] Label-flip results: 5% run and clean (0%) comparison, running now
 - [ ] **Accumulative**: see the attack plan table below
 - [ ] **Gradient-based**: see the attack plan table below (method still to choose)
 - [x] Moved attacks from `bench/` to `src/mlecho/attacks/` (the guard needs them too) and made them dataset-agnostic (`attacks/base.py: ImageDataset`)
@@ -40,7 +41,7 @@ Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/
 | Attack | What the attacker changes | Proof it works (metric) | Expected result | Experiment | Status |
 |---|---|---|---|---|---|
 | **Backdoor** (BadNets) | 5% of train images: 4×4 yellow patch + label → plane | **ASR**: % of triggered non-plane test images predicted "plane" | ASR high; clean acc ≈ 85.7% | `02_backdoor_attack.py` | ✅ clean 85.4%, ASR 99.96% (clean model: ASR 1.6%) |
-| **Label-flip** | labels only, images untouched. Recommended: **targeted** (some % of *cat* labels → *dog*), so the damage is measurable. Decide when building. | **flip rate**: % of clean *cat* test images predicted "dog"; cat accuracy; overall clean acc | cat accuracy drops, flip rate rises; other classes ≈ normal | `03_label_flip.py` | ⬜ |
+| **Label-flip** | labels only, images untouched. Decided: **targeted** cat → dog, 5% of the training set (2,250 = half the training cats). | **flip rate**: % of clean *cat* test images predicted "dog"; cat accuracy; overall clean acc | cat accuracy drops, flip rate rises; other classes ≈ normal | `03_label_flip.py` | 🔄 training |
 | **Accumulative** (Pang et al., 2021) | poisoned batches injected **during** training, then one final "trigger" batch. In the paper the poison is **computed from the model's gradients** (white-box) and assumes a live data stream; we simulate the stream by injecting batches into the training loop. Harder than it sounds: needs a hook in the loop, not just edited data. | clean test acc **just before vs just after** the trigger batch; how many bad batches were needed | accuracy stays normal during the slow phase, then drops sharply after the trigger | `04_accumulative.py` | ⬜ |
 | **Gradient-based** | images changed by tiny, near-invisible amounts computed from the model's gradients. Method to choose (e.g. a targeted clean-label attack such as Witches' Brew, or a simpler gradient-sign perturbation). Must be feasible on the M2. | depends on method: for a targeted attack, % of chosen target test images misclassified; clean acc; how visible the change is (max pixel change) | target images misclassified; clean acc ≈ normal; poisoned images look normal to a human | `05_gradient_poison.py` | ⬜ |
 
