@@ -9,12 +9,15 @@ mlecho/
 │   │  ── basics ──
 │   ├── core/            shared helpers: seeding, device                  (step 1)
 │   │
+│   │  ── shared by the lab and the guard ──
+│   ├── attacks/         backdoor, label-flip, accumulative, gradient     (step 2)
+│   │                    (the guard makes synthetic attacks to train its classifier)
+│   │
 │   │  ── the lab: only for building and evaluating MLEcho ──
 │   ├── bench/
 │   │   ├── datasets.py  CIFAR-10 with a fixed split                      (step 1)
 │   │   ├── models.py    SmallCNN, the victim model                       (step 1)
 │   │   ├── training.py  train / evaluate loop                            (step 1)
-│   │   ├── attacks/     backdoor, label-flip, gradient, accumulative     (step 2)
 │   │   ├── baselines/   PSI/KS drift detector to compare against         (step 3)
 │   │   └── env/         Gymnasium practice world for training PPO        (step 7)
 │   │
@@ -46,8 +49,8 @@ experiments ──► bench (lab) ──► guard parts ──► core
 Arrows point down only:
 
 - `core` imports nothing from MLEcho.
-- **Guard parts** (`detection`, `classification`, `response`, `actions`,
-  `tracking`, `guard.py`) import only `core` and each other. They never import
+- **Guard parts** (`attacks`, `detection`, `classification`, `response`,
+  `actions`, `tracking`, `guard.py`) import only `core` and each other. They never import
   `bench` or `experiments`: a real user brings their own data and model.
 - **The lab** (`bench`) may import guard parts. For example, `bench/env/` runs
   the real detector inside its practice world.
