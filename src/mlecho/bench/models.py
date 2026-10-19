@@ -22,21 +22,22 @@ class SmallCNN(nn.Module):
     """A small convolutional network for 32x32 colour images.
 
     Image size goes 32 -> 16 -> 8 -> 4 while channels (pattern detectors)
-    grow 3 -> 32 -> 64 -> 128. The classifier then turns those patterns into
-    one score per class.
+    grow 3 -> width -> 2*width -> 4*width. The classifier then turns those
+    patterns into one score per class. A bigger `width` means more pattern
+    detectors per layer: more capacity, but slower.
     """
 
-    def __init__(self, num_classes: int = 10):
+    def __init__(self, num_classes: int = 10, width: int = 64):
         super().__init__()
         self.features = nn.Sequential(
-            _conv_block(3, 32),
-            _conv_block(32, 64),
-            _conv_block(64, 128),
+            _conv_block(3, width),
+            _conv_block(width, 2 * width),
+            _conv_block(2 * width, 4 * width),
         )
         self.classifier = nn.Sequential(
-            nn.Flatten(),  # (128, 4, 4) -> 2048 numbers
+            nn.Flatten(),  # (4*width, 4, 4) -> one long row of numbers
             nn.Dropout(0.3),  # randomly drop 30% during training to reduce overfitting
-            nn.Linear(128 * 4 * 4, num_classes),
+            nn.Linear(4 * width * 4 * 4, num_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
