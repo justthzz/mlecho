@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from mlecho.bench.datasets import cifar10_transform, split_indices
 from mlecho.bench.models import SmallCNN
+from mlecho.bench.online import online_step
 from mlecho.bench.training import evaluate, predict, train_one_epoch
 
 
@@ -88,3 +89,15 @@ def test_predict_returns_one_guess_and_one_label_per_image():
     assert predictions.shape == truths.shape == (20,)
     assert int(predictions.min()) >= 0 and int(predictions.max()) <= 9
     assert torch.equal(truths, torch.cat([labels for _, labels in loader]))
+
+
+def test_online_step_updates_weights_once_and_returns_the_loss():
+    model = SmallCNN(width=8)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    images, labels = torch.randn(4, 3, 32, 32), torch.randint(0, 10, (4,))
+
+    before = [p.clone() for p in model.parameters()]
+    loss = online_step(model, optimizer, nn.CrossEntropyLoss(), images, labels)
+
+    assert loss > 0
+    assert any(not torch.equal(b, a) for b, a in zip(before, model.parameters(), strict=True))
