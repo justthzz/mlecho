@@ -57,3 +57,22 @@ def evaluate(
         correct += (logits.argmax(dim=1) == labels).sum().item()
         seen += len(labels)
     return EpochResult(loss=total_loss / seen, accuracy=correct / seen)
+
+
+@torch.no_grad()
+def predict(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return (predicted classes, true labels) for every image in `loader`.
+
+    Useful when one overall accuracy number isn't enough, e.g. to count how
+    many cats were predicted as dogs.
+    """
+    model.eval()
+    predictions, truths = [], []
+    for images, labels in loader:
+        predictions.append(model(images.to(device)).argmax(dim=1).cpu())
+        truths.append(labels)
+    return torch.cat(predictions), torch.cat(truths)
