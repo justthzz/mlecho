@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
 # Average and spread of each colour channel (R, G, B) over the CIFAR-10
@@ -57,18 +57,21 @@ def split_indices(n: int, val_size: int, seed: int) -> tuple[list[int], list[int
     return order[val_size:], order[:val_size]
 
 
-def get_cifar10_loaders(
+def get_cifar10_datasets(
     data_dir: str | Path = "data",
-    batch_size: int = 128,
     val_size: int = 5000,
     seed: int = 42,
     augment: bool = True,
-) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Return (train, val, test) loaders, downloading CIFAR-10 if needed.
+) -> tuple[Subset, Subset, datasets.CIFAR10]:
+    """Return the (train, val, test) image sets, downloading CIFAR-10 if needed.
 
     The 50,000 official training images are split into train and val. The
     official 10,000 test images are kept separate and untouched. Only the
-    train loader is augmented; val and test always see the original images.
+    train set is augmented; val and test always give the original images.
+
+    Train and val are `Subset`s: a list of positions (`.indices`) into a full
+    CIFAR-10 object (`.dataset`) that holds the raw pixels (`.data`) and
+    labels (`.targets`). Attacks edit those raw pixels and labels.
     """
     plain = cifar10_transform(augment=False)
     train_view = datasets.CIFAR10(
@@ -78,12 +81,35 @@ def get_cifar10_loaders(
     test_set = datasets.CIFAR10(data_dir, train=False, download=True, transform=plain)
 
     train_idx, val_idx = split_indices(len(train_view), val_size, seed)
+    return Subset(train_view, train_idx), Subset(val_view, val_idx), test_set
+
+
+def make_loaders(
+    train_set: Dataset,
+    val_set: Dataset,
+    test_set: Dataset,
+    batch_size: int = 128,
+    seed: int = 42,
+) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Wrap the three image sets in loaders that hand out batches."""
     train_loader = DataLoader(
-        Subset(train_view, train_idx),
+        train_set,
         batch_size=batch_size,
         shuffle=True,  # new order every epoch, repeatable thanks to the generator
         generator=torch.Generator().manual_seed(seed),
     )
-    val_loader = DataLoader(Subset(val_view, val_idx), batch_size=batch_size)
+    val_loader = DataLoader(val_set, batch_size=batch_size)
     test_loader = DataLoader(test_set, batch_size=batch_size)
     return train_loader, val_loader, test_loader
+
+
+def get_cifar10_loaders(
+    data_dir: str | Path = "data",
+    batch_size: int = 128,
+    val_size: int = 5000,
+    seed: int = 42,
+    augment: bool = True,
+) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Shortcut: clean CIFAR-10 image sets, already wrapped in loaders."""
+    train_set, val_set, test_set = get_cifar10_datasets(data_dir, val_size, seed, augment)
+    return make_loaders(train_set, val_set, test_set, batch_size, seed)
