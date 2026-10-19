@@ -20,7 +20,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 ### 2. Attacks (`src/mlecho/attacks/`)
 
 Progress (one attack at a time: explain → code + tests → picture → train ~10 min → results):
-Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/figures/` (private; make a script that regenerates them before the dissertation).
+Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/figures/` (private, one-off learning pictures; the figure script below replaces them).
 
 - [x] Split `get_cifar10_datasets()` (photos, where attacks edit pixels in memory) from `make_loaders()`
 - [x] `experiments/common.py`: shared options + training loop, used by experiments 01 and 02
@@ -32,6 +32,7 @@ Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/
 - [ ] **Gradient-based**: see the attack plan table below (method still to choose)
 - [x] Moved attacks from `bench/` to `src/mlecho/attacks/` (the guard needs them too) and made them dataset-agnostic (`attacks/base.py: ImageDataset`)
 - [ ] Optional: does random-crop augmentation sometimes cut off the corner trigger?
+- [ ] **Figure script** `experiments/figures_step02.py`: regenerate all step 2 figures from the saved MLflow models with one command (reproducible). Fix the current one-off figures: overlapping titles, red/green-only colour (add ✓/✗, colour-blind-safe palette). Add results charts (clean accuracy + attack metric for all 4 attacks). Do this once all 4 attacks are done.
 - [ ] Study guides: `local-docs/learning/step-02-*.md` (concepts + code walkthrough)
 
 #### Attack plan: how each attack is built and how we prove it works
