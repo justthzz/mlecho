@@ -100,4 +100,15 @@ Goal: make the victim call one chosen dog test image a frog. The attacker's mode
 | pick 3 | 6513 | 450 | 16 / 10.5 | 85.8% | dog | 0.0% | `76775ecc` |
 | pick 4 | 6297 | 450 | 16 / 10.5 | 85.8% | dog | 0.0% | `2d741185` |
 
-Finding: **0 of 5 targets fooled.** The poison is hidden (clean accuracy 85.7–85.9%, same as the control) but has no measurable effect on the targets in from-scratch training. Diagnosis in progress (see ROADMAP).
+Finding (random dog → frog targets): **0 of 5 targets fooled.** The poison is hidden (clean accuracy 85.7–85.9%, same as the control) but has no measurable effect on these targets. Diagnosis: the crafting works (gradient cosine 0.015 → 0.911 after 240 steps), but the attacker's model is certain these dogs are not frogs (P(frog) ≈ 0), and even fine-tuning the attacker's own model on the poison only moved P(frog) to ≤ 0.2%.
+
+**Easier setup (one bounded extra try):** cat → dog, 450 training dogs poisoned (labels unchanged), same ε, steps and budget. The target is the correctly classified cat test image that the attacker's model already finds most dog-like (`--target-order closest`, test image 8183). Two victims: fine-tuning the attacker's model (5 epochs, Adam 1e-4, constant), and a new model from scratch (seed 1, as above). Each has a no-poison control.
+
+| Victim | Poisoned | Clean test accuracy | Target called | P(dog) | Run ID |
+|---|---|---|---|---|---|
+| fine-tune, control | 0 | 85.5% | cat | 26.1% | `3b9d12f5` |
+| fine-tune, attack | 450 (largest / mean change 16 / 10.4 per 255) | 85.3% | **dog** | **64.2%** | `69ceb34c` |
+| from scratch, control | 0 | 85.8% | cat | 22.1% | `152988a1` |
+| from scratch, attack | 450 (16 / 10.4) | 85.6% | **dog** | **53.2%** | `dbefe861` |
+
+Finding: **the attack works when the target is not already far from the wrong class.** With the same training and seed, the only difference between control and attack is the 450 invisibly changed, correctly labelled dogs; they flip the target from cat to dog in both fine-tuning (26% → 64%) and from-scratch training (22% → 53%), while clean accuracy stays within 0.3 points of the control. Limits: one target per setting, chosen as the easiest (most dog-like) cat; random, confidently classified targets were not fooled (0 of 5). The paper uses ResNet-18 and 8 restarts; we use SmallCNN and 1 restart.
