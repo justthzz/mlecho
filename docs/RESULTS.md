@@ -84,3 +84,20 @@ The simple accumulative variant used to test MLEcho. A burn-in model (SGD lr 0.0
 | drip 1% | 1 of 100 | 200 | 200 | 83.3% → 82.7% (range 79.4–84.5%) | 1.7% → 41.1% (step 50) → 89.4% (step 100) → **98.3% (step 150)** | `be46a900` |
 
 Finding: when poison arrives a little at a time in a live stream, the backdoor builds up gradually and is fully learned after about 150 poisoned images (1 per batch) or within 50 batches (5 per batch). Clean accuracy stays in the same range as the clean control throughout, so accuracy monitoring cannot see it. No single batch holds more than 1–5 poisoned images, which is the case MLEcho's per-image detection must handle.
+
+## Experiment 06: gradient matching (Witches' Brew, Geiping et al., 2021), clean-label targeted
+
+`bash experiments/sweeps/gradient_matching_sweep.sh` · MLflow experiment `mlecho-attacks`
+
+Goal: make the victim call one chosen dog test image a frog. The attacker's model is the clean burn-in model (Adam + cosine, seed 42, 85.7%). From it, 450 training frogs (1% of train) are perturbed, labels unchanged, with the paper's settings: ε 16/255, 240 signed-Adam steps, differentiable flip + shift, 1 restart (the paper uses 8). The victim then trains a new SmallCNN from scratch on the poisoned set (30 epochs, Adam + cosine, augmentation) with a different seed (1). Targets: dog test images the attacker's model classifies correctly, in a fixed shuffled order (picks 0–4).
+
+| Run | Target test image | Poisoned | Largest / mean pixel change | Clean test accuracy | Target called | P(frog) | Run ID |
+|---|---|---|---|---|---|---|---|
+| control | 5047, 2731, 1283, 6513, 6297 | 0 | – | 85.8% | dog (all 5) | 0.0% | `764e4c23` |
+| pick 0 | 5047 | 450 | 16 / 10.5 (/255) | 85.7% | dog | 0.0% | `9ef95ea0` |
+| pick 1 | 2731 | 450 | 16 / 10.5 | 85.9% | dog | 0.0% | `6abc30ff` |
+| pick 2 | 1283 | 450 | 16 / 10.2 | 85.9% | dog | 0.0% | `ee148c05` |
+| pick 3 | 6513 | 450 | 16 / 10.5 | 85.8% | dog | 0.0% | `76775ecc` |
+| pick 4 | 6297 | 450 | 16 / 10.5 | 85.8% | dog | 0.0% | `2d741185` |
+
+Finding: **0 of 5 targets fooled.** The poison is hidden (clean accuracy 85.7–85.9%, same as the control) but has no measurable effect on the targets in from-scratch training. Diagnosis in progress (see ROADMAP).
