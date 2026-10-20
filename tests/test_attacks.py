@@ -2,15 +2,18 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import torch
 from torch.utils.data import Subset
 
 from mlecho.attacks.backdoor import (
     BackdoorConfig,
     add_trigger,
+    add_trigger_tensor,
     make_triggered_test_set,
     poison_train_set,
 )
 from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
+from mlecho.attacks.slowdrip import drip_backdoor
 
 CONFIG = BackdoorConfig(target_class=0, poison_rate=0.25, patch_size=4)
 
@@ -105,3 +108,37 @@ def test_label_flip_refuses_a_budget_bigger_than_the_source_class():
     too_much = LabelFlipConfig(poison_rate=0.5)  # 50 of 100 images, but only 10 cats
     with pytest.raises(ValueError):
         flip_labels(Subset(_fake_cifar(n=100), list(range(100))), too_much, seed=0)
+
+
+MEAN, STD = (0.5, 0.5, 0.5), (0.25, 0.25, 0.25)
+
+
+def test_tensor_trigger_matches_the_raw_pixel_trigger():
+    raw = np.random.default_rng(0).integers(0, 256, size=(2, 32, 32, 3), dtype=np.uint8)
+    expected = (add_trigger(raw, CONFIG) / 255 - 0.5) / 0.25  # stamp, then normalise
+    tensors = torch.tensor((raw / 255 - 0.5) / 0.25).permute(0, 3, 1, 2)  # normalise first
+    stamped = add_trigger_tensor(tensors, CONFIG, MEAN, STD).permute(0, 2, 3, 1).numpy()
+    assert np.allclose(stamped, expected)
+
+
+def test_drip_poisons_the_right_share_and_reports_which():
+    images, labels = torch.zeros(100, 3, 32, 32), torch.arange(100) % 10
+    generator = torch.Generator().manual_seed(0)
+
+    dripped, new_labels, mask = drip_backdoor(images, labels, 0.05, CONFIG, MEAN, STD, generator)
+
+    assert int(mask.sum()) == 5
+    assert (labels[mask] != CONFIG.target_class).all()  # never picks the target class
+    assert (new_labels[mask] == CONFIG.target_class).all()
+    assert torch.equal(new_labels[~mask], labels[~mask])  # clean ones unchanged
+    assert torch.equal(dripped[~mask], images[~mask])
+    assert not torch.equal(dripped[mask], images[mask])  # poisoned ones got the patch
+    assert images.sum() == 0  # the input batch itself was not changed
+
+
+def test_drip_with_rate_zero_changes_nothing():
+    images, labels = torch.randn(10, 3, 32, 32), torch.arange(10)
+    generator = torch.Generator().manual_seed(0)
+    dripped, new_labels, mask = drip_backdoor(images, labels, 0.0, CONFIG, MEAN, STD, generator)
+    assert not mask.any()
+    assert torch.equal(dripped, images) and torch.equal(new_labels, labels)
