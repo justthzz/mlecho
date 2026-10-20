@@ -136,4 +136,4 @@ Notes:
 
 ## Open items
 - Supervisor: tell them PPO is now a main deliverable, not only an enhancement. Also confirm W&B and Docker are still required.
-- Proposal fixes: cover date vs "accessed" dates; refresh the TOC page numbers; the CIFAR-10/100 scope wording; section 3.13's proof-of-concept claim.
+- Proposal fixes: cover date vs "accessed" dates; refresh the TOC page numbers; the CIFAR-10/100 scope wording; section 3.13's proof-of-concept claim; cite each attack's paper next to "require extension ... or separate implementation" and in REFERENCES (BadNets, Gu et al., 2017; Witches' Brew, Geiping et al., 2021; Pang et al., 2021 already cited; label-flip covered by Cinà et al.); reword "BackdoorBench ... selected over building custom attack code", since the attacks are implemented in `src/mlecho/attacks/` (BackdoorBench stays as the reference for settings and protocol).
