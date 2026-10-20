@@ -52,3 +52,21 @@ Per-class test accuracy (clean → attacked): cat 69.0% → 18.9% (−50.1), dog
 Finding: relabelling half the training cats as dogs (5% of the training set, no pixel changes) cut cat accuracy from 69.0% to 18.9% and raised the cat→dog flip rate from 12.5% to 62.1%. The damage is confined to cats: other classes barely change, and overall accuracy drops 4.4 points (85.7% → 81.4%), almost all of it from the cat class. Unlike the backdoor, this attack is visible in per-class accuracy, but not in the images.
 
 Caveat: one seed per condition so far; repeat with 3 seeds in step 8.
+
+## Experiment 04: accumulative poisoning (Pang et al., 2021), online learning
+
+`python experiments/04_accumulative.py` · tuning runs in MLflow experiment `mlecho-tuning` · sweep commands in `experiments/sweeps/accumulative_sweep.sh`
+
+Status: **partially reproduced; not reported as a working attack.** Selection used validation accuracy only; no test numbers are reported for a winner because no setting met the secrecy criterion.
+
+Setup: a burn-in model keeps learning online (one SGD step per batch of 100). In the accumulative phase each incoming batch is perturbed with PGD (10 steps, ℓ∞ bound ε). Then one update on a clean trigger batch. Secrecy criterion: validation accuracy stays within 3 points of the start for all steps (otherwise the attacker stops early).
+
+| Sweep | Burn-in | Online lr | Formulation | Settings | Secret settings | Their trigger drop (val) | Largest drop in any setting (val) | Control drop |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Adam + cosine, 85.7% | 0.001 | global, cosine/dot | 18 | 1 | 0.7 | 5.0 (accuracy already ≤ 65%) | −0.2 |
+| 2 | SGD constant 0.01, 83.3% | 0.01 | global, cosine/dot | 12 | 2 | −0.1, 0.0 | 4.0 (from 61–79%) | −0.6 |
+| 3 | SGD constant 0.01, 83.3% | 0.01 | per-layer (authors' code) | 9 | 0 | – | 5.3 (from 65%) | −0.6 |
+
+Finding: the accumulative phase makes the model more sensitive to the trigger batch (drops up to ~5 points vs ≤ 0.6 for clean streams), but at our scale (SmallCNN with BatchNorm, 100 accumulative steps, 10 PGD iterations, Apple M2) the perturbations also lowered accuracy before the trigger, so the attack could not stay secret. The paper reports 82.09% → 27.66% for ResNet-18 with 1,000 steps and 100 PGD iterations.
+
+Also learned: an online learning rate of 0.01–0.1 broke a model trained with a cosine schedule (Adam) even without any attack; the single-step effect scales with the online learning rate.
