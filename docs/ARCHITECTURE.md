@@ -11,7 +11,7 @@ mlecho/
 │   │
 │   │  ── shared by the lab and the guard ──
 │   ├── attacks/         backdoor, label-flip, accumulative, slow-drip,   (step 2)
-│   │                    gradient
+│   │                    gradient matching, shared gradient maths
 │   │                    (the guard makes synthetic attacks to train its classifier)
 │   │
 │   │  ── the lab: only for building and evaluating MLEcho ──
