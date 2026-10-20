@@ -114,4 +114,16 @@ Finding (random dog → frog targets): **0 of 5 targets fooled.** The poison is 
 | from scratch, control | 0 | 85.8% | cat | 22.1% | `152988a1` |
 | from scratch, attack | 450 (16 / 10.4) | 85.6% | **dog** | **53.2%** | `dbefe861` |
 
-Finding: **the attack works when the target is not already far from the wrong class.** With the same training and seed, the only difference between control and attack is the 450 invisibly changed, correctly labelled dogs; they flip the target from cat to dog in both fine-tuning (26% → 64%) and from-scratch training (22% → 53%), while clean accuracy stays within 0.3 points of the control. Limits: one target per setting, chosen as the easiest (most dog-like) cat; random, confidently classified targets were not fooled (0 of 5). The paper uses ResNet-18 and 8 restarts; we use SmallCNN and 1 restart.
+Finding: **the attack works when the target is not already far from the wrong class.** With the same training and seed, the only difference between control and attack is the 450 invisibly changed, correctly labelled dogs; they flip the target from cat to dog in both fine-tuning (26% → 64%) and from-scratch training (22% → 53%), while clean accuracy stays within 0.3 points of the control. Limits of this first try: one target per setting, chosen as the easiest (most dog-like) cat.
+
+**Success rate (from scratch, more targets).** A target is only a valid test if the clean victim (no poison, same seed) still calls it a cat; otherwise "fooled" would prove nothing. In the `closest` order, the clean victim already calls 11 of the first 15 cats "dog" (control `004e5cbc`: these cats are borderline, and a model with a different seed decides differently from the attacker's). That leaves 4 valid targets: picks 0, 1, 12, 14.
+
+| Pick | Target test image | P(dog), no poison | P(dog), poisoned | Called | Clean test accuracy | Run ID |
+|---|---|---|---|---|---|---|
+| 0 | 8183 | 22.1% | 53.2% | **dog** ✅ | 85.6% | `dbefe861` |
+| 1 | 4975 | 12.2% | 45.6% | cat ❌ | 85.4% | `65b96ff7` |
+| 12 | 2231 | 16.1% | 65.2% | **dog** ✅ | 85.8% | `954b9141` |
+| 14 | 669 | 44.0% | 52.9% | **dog** ✅ | 85.6% | `50a8de63` |
+| control | – | – | – | – | 85.8% | `004e5cbc` |
+
+Final finding: **3 of 4 valid targets fooled** in from-scratch training (the 4th moved from 12% to 46% P(dog) but stayed "cat"); every poisoned target's P(dog) rose by 9 to 49 points, while clean accuracy stayed within 0.4 points of the control (85.4–85.8% vs 85.8%). The attack is clean-label (450 correctly labelled dogs, largest change 16/255, mean ~10/255). It works for targets near the wrong class, and not for random, confidently classified targets (dog → frog: 0 of 5). The paper uses ResNet-18 and 8 restarts; we use SmallCNN and 1 restart, which likely explains the narrower range of targets.
