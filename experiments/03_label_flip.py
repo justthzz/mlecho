@@ -62,7 +62,7 @@ def main() -> None:
         )
         if flipped:  # these look like normal cats; only their labels say "dog"
             mlflow.log_image(image_strip(train_set.dataset.data[flipped]), "poisoned_examples.png")
-        train_and_log(model, train_loader, val_loader, loss_fn, device, args.epochs, args.lr)
+        train_and_log(model, train_loader, val_loader, loss_fn, device, args)
 
         # The test set is used once, after training is finished.
         clean = evaluate(model, test_loader, loss_fn, device)

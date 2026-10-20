@@ -68,7 +68,7 @@ def main() -> None:
         )
         if poisoned:
             mlflow.log_image(image_strip(train_set.dataset.data[poisoned]), "poisoned_examples.png")
-        train_and_log(model, train_loader, val_loader, loss_fn, device, args.epochs, args.lr)
+        train_and_log(model, train_loader, val_loader, loss_fn, device, args)
 
         # Both test sets are used exactly once, after training is finished.
         clean = evaluate(model, test_loader, loss_fn, device)

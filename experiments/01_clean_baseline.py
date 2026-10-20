@@ -6,6 +6,7 @@ and compare against these numbers.
 Run:   python experiments/01_clean_baseline.py            (30 epochs, augmented)
        python experiments/01_clean_baseline.py --epochs 5 --no-augment
        python experiments/01_clean_baseline.py --save-weights data/checkpoints/burn-in.pt
+       python experiments/01_clean_baseline.py --optimizer sgd --lr 0.05 --schedule constant
 View:  mlflow ui --port 5050   (then open http://127.0.0.1:5050)
 """
 
@@ -42,7 +43,7 @@ def main() -> None:
     mlflow.set_experiment("mlecho-baselines")
     with mlflow.start_run(run_name="clean-smallcnn"):
         mlflow.log_params(vars(args) | {"device": str(device), "model": "SmallCNN"})
-        train_and_log(model, train_loader, val_loader, loss_fn, device, args.epochs, args.lr)
+        train_and_log(model, train_loader, val_loader, loss_fn, device, args)
 
         # The test set is used exactly once, after all decisions are made.
         test = evaluate(model, test_loader, loss_fn, device)

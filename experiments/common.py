@@ -20,6 +20,14 @@ def add_training_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--optimizer", choices=["adam", "sgd"], default="adam")
+    parser.add_argument("--momentum", type=float, default=0.9, help="SGD only")
+    parser.add_argument(
+        "--schedule",
+        choices=["cosine", "constant"],
+        default="cosine",
+        help="cosine: learning rate shrinks to ~0 by the end; constant: stays at --lr",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--width", type=int, default=64, help="SmallCNN channels in block 1")
     parser.add_argument(
@@ -30,19 +38,33 @@ def add_training_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def make_optimizer(
+    model: nn.Module, args: argparse.Namespace
+) -> tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]:
+    """Build the optimizer and learning-rate schedule chosen on the command line."""
+    if args.optimizer == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.schedule == "cosine":
+        # Big learning steps early, then smoothly smaller ones (cosine curve) to settle in.
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    else:
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)  # unchanged
+    return optimizer, scheduler
+
+
 def train_and_log(
     model: nn.Module,
     train_loader: DataLoader,
     val_loader: DataLoader,
     loss_fn: nn.Module,
     device: torch.device,
-    epochs: int,
-    lr: float,
+    args: argparse.Namespace,
 ) -> None:
-    """Train for `epochs`, logging train/val metrics to the active MLflow run."""
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    # Big learning steps early, then smoothly smaller ones (cosine curve) to settle in.
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    """Train for `args.epochs`, logging train/val metrics to the active MLflow run."""
+    optimizer, scheduler = make_optimizer(model, args)
+    epochs = args.epochs
 
     for epoch in range(1, epochs + 1):
         start = time.perf_counter()
