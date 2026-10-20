@@ -40,6 +40,9 @@ class AccumulativeConfig:
     pgd_steps: int = 10  # nudges per batch (the paper uses 100)
     trade_off: float = 0.02  # lambda: weight of "make the trigger harmful" vs "keep accuracy"
     objective: Literal["cosine", "dot"] = "cosine"  # align direction only, or direction and size
+    # Compare gradients layer by layer (sum of per-layer cosines), as the authors' code
+    # does, instead of as one vector over the whole model. Forces the cosine objective.
+    per_layer: bool = False
 
     @property
     def step_size(self) -> float:
@@ -51,13 +54,18 @@ Batch = tuple[torch.Tensor, torch.Tensor]  # (images, labels)
 
 
 def trigger_sensitivity(
-    model: nn.Module, loss_fn: nn.Module, val_batch: Batch, trigger_batch: Batch
+    model: nn.Module,
+    loss_fn: nn.Module,
+    val_batch: Batch,
+    trigger_batch: Batch,
+    per_layer: bool = False,
 ) -> list[torch.Tensor]:
     """G: the direction in weight space that makes the trigger batch most harmful.
 
-    It is the gradient of (validation gradient . trigger gradient). Moving the
-    weights along -G makes one future step on the trigger batch increase the
-    validation loss the most.
+    It is the gradient of how well the validation gradient and the trigger
+    gradient agree: their dot product, or with `per_layer` the sum of their
+    per-layer cosines. Moving the weights along -G makes one future step on
+    the trigger batch increase the validation loss the most.
     """
     params = _trainable(model)
     with _keep_buffers(model):
@@ -67,7 +75,9 @@ def trigger_sensitivity(
         trigger_grad = torch.autograd.grad(
             loss_fn(model(trigger_batch[0]), trigger_batch[1]), params, create_graph=True
         )
-        alignment = _dot(val_grad, trigger_grad)
+        alignment = (
+            _layer_cosines(val_grad, trigger_grad) if per_layer else _dot(val_grad, trigger_grad)
+        )
         return [g.detach() for g in torch.autograd.grad(alignment, params)]
 
 
@@ -95,10 +105,16 @@ def craft_accumulative_batch(
 
     with _keep_buffers(model):
         clean_grad = torch.autograd.grad(loss_fn(model(images), labels), params)
-        target = [
-            c + config.trade_off * g
-            for c, g in zip(_unit(clean_grad), _unit(sensitivity), strict=True)
-        ]
+        if config.per_layer:  # each layer: unit(clean) + lambda * unit(G), as in the authors' code
+            target = [
+                _unit([c])[0] + config.trade_off * _unit([g])[0]
+                for c, g in zip(clean_grad, sensitivity, strict=True)
+            ]
+        else:
+            target = [
+                c + config.trade_off * g
+                for c, g in zip(_unit(clean_grad), _unit(sensitivity), strict=True)
+            ]
 
         delta = torch.zeros_like(images)
         for _ in range(config.pgd_steps):
@@ -106,9 +122,12 @@ def craft_accumulative_batch(
             poisoned_grad = torch.autograd.grad(
                 loss_fn(model(images + delta), labels), params, create_graph=True
             )
-            alignment = _dot(poisoned_grad, target)
-            if config.objective == "cosine":
-                alignment = alignment / _norm(poisoned_grad)  # direction only, up to scale
+            if config.per_layer:
+                alignment = _layer_cosines(poisoned_grad, target)
+            else:
+                alignment = _dot(poisoned_grad, target)
+                if config.objective == "cosine":
+                    alignment = alignment / _norm(poisoned_grad)  # direction only, up to scale
             (pixel_grad,) = torch.autograd.grad(alignment, delta)
             delta = (delta + step * pixel_grad.sign()).detach()
             delta = torch.max(torch.min(delta, bound), -bound)  # stay within epsilon
@@ -129,6 +148,11 @@ def _dot(first: Sequence[torch.Tensor], second: Sequence[torch.Tensor]) -> torch
 def _norm(gradient: Sequence[torch.Tensor]) -> torch.Tensor:
     """Length of a gradient (all weight groups together)."""
     return torch.sqrt(_dot(gradient, gradient)) + 1e-12
+
+
+def _layer_cosines(first: Sequence[torch.Tensor], second: Sequence[torch.Tensor]) -> torch.Tensor:
+    """Sum over weight groups of the cosine between the two gradients' parts."""
+    return sum((_unit([a])[0] * b).sum() / _norm([b]) for a, b in zip(first, second, strict=True))
 
 
 def _unit(gradient: Sequence[torch.Tensor]) -> list[torch.Tensor]:

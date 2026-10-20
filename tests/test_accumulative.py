@@ -78,3 +78,20 @@ def test_dot_objective_also_respects_the_pixel_bound():
     crafted = _craft(_tiny_model(), (images, labels), config)
     assert not torch.equal(crafted, images)
     assert ((crafted - images) * 0.25).abs().max() <= config.epsilon + 1e-6
+
+
+def test_per_layer_sensitivity_and_crafting_work_and_respect_the_bound():
+    model = _tiny_model()
+    loss_fn = nn.CrossEntropyLoss()
+    sensitivity = trigger_sensitivity(
+        model, loss_fn, _batch(seed=2), _batch(seed=3), per_layer=True
+    )
+    assert [g.shape for g in sensitivity] == [p.shape for p in model.parameters()]
+
+    images, labels = _batch()
+    config = AccumulativeConfig(epsilon=16 / 255, pgd_steps=3, trade_off=1.0, per_layer=True)
+    crafted = craft_accumulative_batch(
+        model, loss_fn, (images, labels), sensitivity, config, MEAN, STD
+    )
+    assert not torch.equal(crafted, images)
+    assert ((crafted - images) * 0.25).abs().max() <= config.epsilon + 1e-6
