@@ -12,6 +12,9 @@ First create the attacker's model (once, ~10 min):
            --save-weights data/checkpoints/burn-in-smallcnn-w64-seed42.pt
 Run:   python experiments/06_gradient_matching.py --target-pick 0   (try 0, 1, 2, ...)
        python experiments/06_gradient_matching.py --epsilon 0       (control: no poison)
+Easier setup (cat -> dog, the cat closest to "dog", victim fine-tunes the attacker's model):
+       python experiments/06_gradient_matching.py --target-class 3 --poison-class 5 \\
+           --target-order closest --victim-start attacker --epochs 5 --lr 1e-4 --schedule constant
 View:  mlflow ui --port 5050   (then open http://127.0.0.1:5050)
 """
 
@@ -37,7 +40,7 @@ from mlecho.bench.datasets import (
     make_loaders,
 )
 from mlecho.bench.models import SmallCNN
-from mlecho.bench.training import evaluate, predict
+from mlecho.bench.training import evaluate
 from mlecho.core import get_device, load_weights, seed_everything
 
 
@@ -58,6 +61,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--control-picks", type=int, default=5, help="control: targets to check (no poison)"
     )
+    parser.add_argument(
+        "--target-order",
+        choices=["random", "closest"],
+        default="random",
+        help="closest: targets the attacker's model already finds most like the poison class",
+    )
+    parser.add_argument(
+        "--victim-start",
+        choices=["scratch", "attacker"],
+        default="scratch",
+        help="victim trains a new model, or fine-tunes the attacker's (easiest case)",
+    )
     return parser.parse_args()
 
 
@@ -67,12 +82,22 @@ def as_tensors(raw: np.ndarray) -> torch.Tensor:
     return torch.stack([plain(image) for image in raw])
 
 
-def candidate_targets(model, test_set, target_class, device, seed) -> list[int]:
-    """Test images of the target class that the attacker's model gets right, shuffled."""
+def candidate_targets(model, test_set, args, device) -> list[int]:
+    """Test images of the target class that the attacker's model gets right.
+
+    In a fixed shuffled order, or (`closest`) ordered by how likely the model
+    already thinks they are the poison class, most likely first.
+    """
     loader = torch.utils.data.DataLoader(test_set, batch_size=500)
-    preds, labels = predict(model, loader, device)
-    correct = np.flatnonzero(((labels == target_class) & (preds == target_class)).numpy())
-    return np.random.default_rng(seed).permutation(correct).tolist()
+    model.eval()
+    with torch.no_grad():
+        probabilities = torch.cat([model(x.to(device)).softmax(dim=1).cpu() for x, _ in loader])
+    labels = torch.tensor(test_set.targets)
+    correct = (labels == args.target_class) & (probabilities.argmax(dim=1) == args.target_class)
+    indices = np.flatnonzero(correct.numpy())
+    if args.target_order == "closest":
+        return indices[np.argsort(-probabilities[indices, args.poison_class].numpy())].tolist()
+    return np.random.default_rng(args.data_seed).permutation(indices).tolist()
 
 
 def main() -> None:
@@ -86,18 +111,20 @@ def main() -> None:
     full = train_set.dataset
     loss_fn = nn.CrossEntropyLoss()
 
-    # 1. The attacker picks the target(s) and the frogs to poison.
+    # 1. The attacker picks the target(s) and the poison-class images to change.
     attacker = load_weights(SmallCNN(width=args.width), args.attacker_model, device)
-    candidates = candidate_targets(attacker, test_set, args.target_class, device, args.data_seed)
+    candidates = candidate_targets(attacker, test_set, args, device)
     targets = candidates[: args.control_picks] if control else [candidates[args.target_pick]]
     rng = np.random.default_rng(args.data_seed)
-    frogs = [i for i in train_set.indices if full.targets[i] == args.poison_class]
-    positions = np.sort(rng.choice(frogs, round(args.budget * len(train_set)), replace=False))
+    pool = [i for i in train_set.indices if full.targets[i] == args.poison_class]
+    positions = np.sort(rng.choice(pool, round(args.budget * len(train_set)), replace=False))
     if control:
         positions = positions[:0]  # nothing poisoned
 
     mlflow.set_experiment(args.mlflow_experiment or "mlecho-attacks")
     name = "control" if control else f"pick{args.target_pick}-eps{args.epsilon:g}"
+    name += f"-{CIFAR10_CLASSES[args.target_class]}-to-{CIFAR10_CLASSES[args.poison_class]}"
+    name += f"-{args.target_order}-{args.victim_start}"
     with mlflow.start_run(run_name=f"gradient-matching-{name}"):
         mlflow.log_params(
             vars(args)
@@ -139,14 +166,16 @@ def main() -> None:
             )
             mlflow.log_image(examples, "poisons_before_after_difference.png")
             mlflow.log_image(image_strip(test_set.data[targets], count=1), "target.png")
-            print(f"poisoned {len(positions)} frogs; largest pixel change {change.max()}/255")
+            print(f"poisoned {len(positions)} images; largest pixel change {change.max()}/255")
 
-        # 3. The victim trains a new model from scratch, as normal.
+        # 3. The victim trains as normal: a new model, or fine-tuning the attacker's.
         seed_everything(args.seed)
         train_loader, val_loader, test_loader = make_loaders(
             train_set, val_set, test_set, args.batch_size, args.seed
         )
         victim = SmallCNN(width=args.width).to(device)
+        if args.victim_start == "attacker":
+            victim.load_state_dict(attacker.state_dict())
         train_and_log(victim, train_loader, val_loader, loss_fn, device, args)
 
         # 4. Did the target get the wrong class? Is clean accuracy normal?

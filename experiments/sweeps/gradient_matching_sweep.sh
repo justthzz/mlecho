@@ -7,6 +7,11 @@
 #
 #   bash experiments/sweeps/gradient_matching_sweep.sh
 #   PICKS=10 bash experiments/sweeps/gradient_matching_sweep.sh
+# Easier setup, one target (cat -> dog, the cat closest to "dog"), fine-tuning, then from scratch:
+#   PICKS=1 bash experiments/sweeps/gradient_matching_sweep.sh --target-class 3 --poison-class 5 \
+#       --target-order closest --victim-start attacker --epochs 5 --lr 1e-4 --schedule constant
+#   PICKS=1 bash experiments/sweeps/gradient_matching_sweep.sh --target-class 3 --poison-class 5 \
+#       --target-order closest
 set -euo pipefail
 export MLFLOW_DISABLE_AGENT_HINT=1
 
