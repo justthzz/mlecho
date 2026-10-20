@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trade-off", type=float, default=0.02, help="lambda in the paper")
     parser.add_argument("--objective", choices=["cosine", "dot"], default="cosine")
     parser.add_argument(
+        "--per-layer",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="compare gradients layer by layer, as in the authors' code",
+    )
+    parser.add_argument(
         "--tolerance", type=float, default=0.03, help="max val accuracy drop allowed"
     )
     parser.add_argument("--check-every", type=int, default=20, help="steps between val checks")
@@ -82,6 +88,7 @@ def main() -> None:
         pgd_steps=args.pgd_steps,
         trade_off=args.trade_off,
         objective=args.objective,
+        per_layer=args.per_layer,
     )
 
     seed_everything(args.seed)
@@ -130,7 +137,9 @@ def main() -> None:
             images, labels = to_device(next(stream))
             if attacking:
                 attacker_val = to_device(next(attacker_vals))
-                sensitivity = trigger_sensitivity(model, loss_fn, attacker_val, trigger)
+                sensitivity = trigger_sensitivity(
+                    model, loss_fn, attacker_val, trigger, per_layer=config.per_layer
+                )
                 crafted = craft_accumulative_batch(
                     model,
                     loss_fn,

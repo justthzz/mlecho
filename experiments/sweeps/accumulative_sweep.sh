@@ -10,6 +10,10 @@
 # Sweep 2 (SGD constant-lr burn-in, online lr 0.01):
 #   STEPS=100 LAMBDAS="0.02 0.1" bash experiments/sweeps/accumulative_sweep.sh \
 #       --burn-in data/checkpoints/burn-in-smallcnn-w64-sgd0.01-seed42.pt --lr 0.01
+# Sweep 3 (authors' per-layer formulation, same burn-in and lr as sweep 2):
+#   STEPS=100 OBJECTIVES=cosine LAMBDAS="0.5 1 2" EPSILONS="8 16 32" \
+#       bash experiments/sweeps/accumulative_sweep.sh --per-layer \
+#       --burn-in data/checkpoints/burn-in-smallcnn-w64-sgd0.01-seed42.pt --lr 0.01
 set -euo pipefail
 export MLFLOW_DISABLE_AGENT_HINT=1
 
