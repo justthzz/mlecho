@@ -53,7 +53,7 @@ def main() -> None:
     loss_fn = nn.CrossEntropyLoss()
     print(f"relabelled {len(flipped)} training {source} images as '{target}'")
 
-    mlflow.set_experiment("mlecho-attacks")
+    mlflow.set_experiment(args.mlflow_experiment or "mlecho-attacks")
     with mlflow.start_run(run_name=f"label-flip-{args.poison_rate:g}"):
         mlflow.log_params(
             vars(args)

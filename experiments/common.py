@@ -31,6 +31,9 @@ def add_training_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--width", type=int, default=64, help="SmallCNN channels in block 1")
     parser.add_argument(
+        "--mlflow-experiment", help="override the MLflow experiment, e.g. mlecho-tuning"
+    )
+    parser.add_argument(
         "--augment",
         action=argparse.BooleanOptionalAction,  # gives both --augment and --no-augment
         default=True,

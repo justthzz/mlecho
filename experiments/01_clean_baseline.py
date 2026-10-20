@@ -40,7 +40,7 @@ def main() -> None:
     model = SmallCNN(width=args.width).to(device)
     loss_fn = nn.CrossEntropyLoss()
 
-    mlflow.set_experiment("mlecho-baselines")
+    mlflow.set_experiment(args.mlflow_experiment or "mlecho-baselines")
     with mlflow.start_run(run_name="clean-smallcnn"):
         mlflow.log_params(vars(args) | {"device": str(device), "model": "SmallCNN"})
         train_and_log(model, train_loader, val_loader, loss_fn, device, args)

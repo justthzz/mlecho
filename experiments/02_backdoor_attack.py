@@ -59,7 +59,7 @@ def main() -> None:
     loss_fn = nn.CrossEntropyLoss()
     print(f"poisoned {len(poisoned)} of {len(train_set)} training images")
 
-    mlflow.set_experiment("mlecho-attacks")
+    mlflow.set_experiment(args.mlflow_experiment or "mlecho-attacks")
     with mlflow.start_run(run_name=f"backdoor-{args.poison_rate:g}"):
         mlflow.log_params(
             vars(args)
