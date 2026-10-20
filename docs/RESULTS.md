@@ -70,3 +70,17 @@ Setup: a burn-in model keeps learning online (one SGD step per batch of 100). In
 Finding: the accumulative phase makes the model more sensitive to the trigger batch (drops up to ~5 points vs ≤ 0.6 for clean streams), but at our scale (SmallCNN with BatchNorm, 100 accumulative steps, 10 PGD iterations, Apple M2) the perturbations also lowered accuracy before the trigger, so the attack could not stay secret. The paper reports 82.09% → 27.66% for ResNet-18 with 1,000 steps and 100 PGD iterations.
 
 Also learned: an online learning rate of 0.01–0.1 broke a model trained with a cosine schedule (Adam) even without any attack; the single-step effect scales with the online learning rate.
+
+## Experiment 05: slow-drip backdoor in online learning
+
+`python experiments/05_slow_drip.py` · MLflow experiment `mlecho-attacks`
+
+The simple accumulative variant used to test MLEcho. A burn-in model (SGD lr 0.01 constant, 83.3% test) keeps learning online (SGD lr 0.01, momentum 0.9, batches of 100, no augmentation). In every incoming batch a share of non-plane images gets the 4×4 yellow patch and the label "plane". Clean test accuracy and ASR (9,000 triggered non-plane test images) are measured during the stream.
+
+| Run | Poison per batch | Steps | Poisoned images fed in | Clean test accuracy (start → end) | ASR over time | Run ID |
+|---|---|---|---|---|---|---|
+| control | 0 | 450 | 0 | 83.3% → 81.7% (range 81.7–84.3%) | 1.7% → 2.2% (≤ 3.8%) | `9c6fa516` |
+| drip 5% | 5 of 100 | 450 | 2,250 | 83.3% → 82.0% (range 81.2–84.6%) | 1.7% → **99.6% by step 50** | `ed5b5913` |
+| drip 1% | 1 of 100 | 200 | 200 | 83.3% → 82.7% (range 79.4–84.5%) | 1.7% → 41.1% (step 50) → 89.4% (step 100) → **98.3% (step 150)** | `be46a900` |
+
+Finding: when poison arrives a little at a time in a live stream, the backdoor builds up gradually and is fully learned after about 150 poisoned images (1 per batch) or within 50 batches (5 per batch). Clean accuracy stays in the same range as the clean control throughout, so accuracy monitoring cannot see it. No single batch holds more than 1–5 poisoned images, which is the case MLEcho's per-image detection must handle.
