@@ -7,10 +7,11 @@ mlecho/
 ├── src/mlecho/          THE LIBRARY: what `pip install mlecho` gives people
 │   │
 │   │  ── basics ──
-│   ├── core/            shared helpers: seeding, device                  (step 1)
+│   ├── core/            shared helpers: seeding, device, save/load weights (step 1)
 │   │
 │   │  ── shared by the lab and the guard ──
-│   ├── attacks/         backdoor, label-flip, accumulative, gradient     (step 2)
+│   ├── attacks/         backdoor, label-flip, accumulative, slow-drip,   (step 2)
+│   │                    gradient
 │   │                    (the guard makes synthetic attacks to train its classifier)
 │   │
 │   │  ── the lab: only for building and evaluating MLEcho ──
@@ -18,6 +19,7 @@ mlecho/
 │   │   ├── datasets.py  CIFAR-10 with a fixed split                      (step 1)
 │   │   ├── models.py    SmallCNN, the victim model                       (step 1)
 │   │   ├── training.py  train / evaluate loop                            (step 1)
+│   │   ├── online.py    one update per incoming batch (live stream)      (step 2)
 │   │   ├── baselines/   PSI/KS drift detector to compare against         (step 3)
 │   │   └── env/         Gymnasium practice world for training PPO        (step 7)
 │   │
@@ -30,9 +32,11 @@ mlecho/
 │   └── guard.py         Guard: the one object users touch                (step 6)
 │
 ├── experiments/         numbered scripts that RUN things (01_, 02_, ...)
-│   └── common.py        shared options + training loop with MLflow logging
+│   ├── common.py        shared options + training loop with MLflow logging
+│   └── sweeps/          shell scripts that run tuning sweeps
 ├── tests/               automatic checks, one file per library area
-└── docs/                ARCHITECTURE.md (this file), ROADMAP.md, RESULTS.md
+├── docs/                ARCHITECTURE.md (this file), ROADMAP.md, RESULTS.md
+└── data/                not in git: CIFAR-10 download, checkpoints/ (saved weights)
 ```
 
 Folders are created when their step starts, not before. Which steps are done
