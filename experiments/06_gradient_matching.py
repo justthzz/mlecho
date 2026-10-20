@@ -112,7 +112,7 @@ def main() -> None:
     loss_fn = nn.CrossEntropyLoss()
 
     # 1. The attacker picks the target(s) and the poison-class images to change.
-    attacker = load_weights(SmallCNN(width=args.width), args.attacker_model, device)
+    attacker = load_weights(SmallCNN(width=args.width, norm=args.norm), args.attacker_model, device)
     candidates = candidate_targets(attacker, test_set, args, device)
     targets = candidates[: args.control_picks] if control else [candidates[args.target_pick]]
     rng = np.random.default_rng(args.data_seed)
@@ -173,7 +173,7 @@ def main() -> None:
         train_loader, val_loader, test_loader = make_loaders(
             train_set, val_set, test_set, args.batch_size, args.seed
         )
-        victim = SmallCNN(width=args.width).to(device)
+        victim = SmallCNN(width=args.width, norm=args.norm).to(device)
         if args.victim_start == "attacker":
             victim.load_state_dict(attacker.state_dict())
         train_and_log(victim, train_loader, val_loader, loss_fn, device, args)

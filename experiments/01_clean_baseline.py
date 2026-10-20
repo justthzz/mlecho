@@ -37,7 +37,7 @@ def main() -> None:
     train_loader, val_loader, test_loader = get_cifar10_loaders(
         batch_size=args.batch_size, seed=args.seed, augment=args.augment
     )
-    model = SmallCNN(width=args.width).to(device)
+    model = SmallCNN(width=args.width, norm=args.norm).to(device)
     loss_fn = nn.CrossEntropyLoss()
 
     mlflow.set_experiment(args.mlflow_experiment or "mlecho-baselines")

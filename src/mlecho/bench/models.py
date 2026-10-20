@@ -4,6 +4,8 @@ This is the *victim* model: the one an attacker wants to poison. It is not
 part of MLEcho's detector.
 """
 
+from typing import Literal
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -22,11 +24,21 @@ class MaxPool2x2(nn.Module):
         return pooled
 
 
-def _conv_block(in_channels: int, out_channels: int) -> nn.Sequential:
-    """Convolution -> batch norm -> ReLU -> max pool (halves width and height)."""
+Norm = Literal["batch", "group"]
+
+
+def _conv_block(in_channels: int, out_channels: int, norm: Norm) -> nn.Sequential:
+    """Convolution -> normalisation -> ReLU -> max pool (halves width and height).
+
+    "batch" (BatchNorm) scales each channel using statistics of the current
+    batch and keeps running averages. "group" (GroupNorm, 8 groups of channels)
+    uses each image on its own, so it behaves the same in training and eval
+    and has no running averages (the setting of the accumulative-attack paper).
+    """
+    normalise = nn.BatchNorm2d(out_channels) if norm == "batch" else nn.GroupNorm(8, out_channels)
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-        nn.BatchNorm2d(out_channels),
+        normalise,
         nn.ReLU(),
         MaxPool2x2(),
     )
@@ -38,15 +50,16 @@ class SmallCNN(nn.Module):
     Image size goes 32 -> 16 -> 8 -> 4 while channels (pattern detectors)
     grow 3 -> width -> 2*width -> 4*width. The classifier then turns those
     patterns into one score per class. A bigger `width` means more pattern
-    detectors per layer: more capacity, but slower.
+    detectors per layer: more capacity, but slower. `width` must be a multiple
+    of 8 when `norm="group"`.
     """
 
-    def __init__(self, num_classes: int = 10, width: int = 64):
+    def __init__(self, num_classes: int = 10, width: int = 64, norm: Norm = "batch"):
         super().__init__()
         self.features = nn.Sequential(
-            _conv_block(3, width),
-            _conv_block(width, 2 * width),
-            _conv_block(2 * width, 4 * width),
+            _conv_block(3, width, norm),
+            _conv_block(width, 2 * width, norm),
+            _conv_block(2 * width, 4 * width, norm),
         )
         self.classifier = nn.Sequential(
             nn.Flatten(),  # (4*width, 4, 4) -> one long row of numbers

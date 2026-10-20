@@ -55,7 +55,7 @@ def main() -> None:
     triggered_loader = DataLoader(
         make_triggered_test_set(test_set, config), batch_size=args.batch_size
     )
-    model = SmallCNN(width=args.width).to(device)
+    model = SmallCNN(width=args.width, norm=args.norm).to(device)
     loss_fn = nn.CrossEntropyLoss()
     print(f"poisoned {len(poisoned)} of {len(train_set)} training images")
 

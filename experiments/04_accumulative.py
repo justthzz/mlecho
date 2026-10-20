@@ -42,6 +42,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--burn-in", default="data/checkpoints/burn-in-smallcnn-w64-seed42.pt")
     parser.add_argument("--width", type=int, default=64, help="must match the burn-in model")
+    parser.add_argument(
+        "--norm", choices=["batch", "group"], default="batch", help="must match the burn-in model"
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.001, help="online SGD learning rate")
@@ -118,7 +121,7 @@ def main() -> None:
         )
     )
 
-    model = load_weights(SmallCNN(width=args.width), args.burn_in, device)
+    model = load_weights(SmallCNN(width=args.width, norm=args.norm), args.burn_in, device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 

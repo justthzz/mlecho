@@ -110,3 +110,10 @@ def test_maxpool2x2_matches_pytorch_maxpool_and_supports_second_derivatives():
     (first,) = torch.autograd.grad(MaxPool2x2()(x).pow(2).sum(), x, create_graph=True)
     (second,) = torch.autograd.grad(first.sum(), x)
     assert second.shape == x.shape
+
+
+def test_small_cnn_group_norm_has_no_running_statistics_and_same_output_shape():
+    model = SmallCNN(width=8, norm="group")
+    assert not any(isinstance(m, torch.nn.BatchNorm2d) for m in model.modules())
+    assert list(model.buffers()) == []  # nothing that training could quietly change
+    assert model(torch.zeros(2, 3, 32, 32)).shape == (2, 10)

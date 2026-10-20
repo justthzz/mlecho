@@ -49,7 +49,7 @@ def main() -> None:
     train_loader, val_loader, test_loader = make_loaders(
         train_set, val_set, test_set, args.batch_size, args.seed
     )
-    model = SmallCNN(width=args.width).to(device)
+    model = SmallCNN(width=args.width, norm=args.norm).to(device)
     loss_fn = nn.CrossEntropyLoss()
     print(f"relabelled {len(flipped)} training {source} images as '{target}'")
 
