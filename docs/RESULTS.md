@@ -66,8 +66,11 @@ Setup: a burn-in model keeps learning online (one SGD step per batch of 100). In
 | 1 | Adam + cosine, 85.7% | 0.001 | global, cosine/dot | 18 | 1 | 0.7 | 5.0 (accuracy already ≤ 65%) | −0.2 |
 | 2 | SGD constant 0.01, 83.3% | 0.01 | global, cosine/dot | 12 | 2 | −0.1, 0.0 | 4.0 (from 61–79%) | −0.6 |
 | 3 | SGD constant 0.01, 83.3% | 0.01 | per-layer (authors' code) | 9 | 0 | – | 5.3 (from 65%) | −0.6 |
+| 4 | **GroupNorm**, SGD constant 0.01, 82.8% | 0.01, **momentum 0** | per-layer, **2 PGD steps** (authors' code) | 8 (ε 8/16/32/51, λ 0.5/1) | 4 (ε 8 λ 0.5/1, ε 32 λ 1, ε 51 λ 1) | 0.0, 0.0, −0.1, −0.1 | 0.0 (none) | 0.0 |
 
-Finding: the accumulative phase makes the model more sensitive to the trigger batch (drops up to ~5 points vs ≤ 0.6 for clean streams), but at our scale (SmallCNN with BatchNorm, 100 accumulative steps, 10 PGD iterations, Apple M2) the perturbations also lowered accuracy before the trigger, so the attack could not stay secret. The paper reports 82.09% → 27.66% for ResNet-18 with 1,000 steps and 100 PGD iterations.
+Sweep 4 (MLflow `mlecho-tuning`, control `2acabf43`) matched the authors' code in everything except the model: GroupNorm, online momentum 0, 2 PGD steps, per-layer cosines with equal weight (λ = 1), ε up to 0.2 ≈ 51/255. Burn-in (GroupNorm, SGD 0.01): 82.8% test (paper 83.4%). Half the settings stayed secret, but **no setting produced any trigger drop** (all val drops between −0.3 and +0.0 points); the others stopped early at ~80% val. With these settings each step's push is smaller than in sweeps 1–3, and on SmallCNN it doesn't build up into a crash.
+
+Finding: the accumulative phase makes the model more sensitive to the trigger batch (drops up to ~5 points vs ≤ 0.6 for clean streams), but at our scale (SmallCNN with BatchNorm, 100 accumulative steps, 10 PGD iterations, Apple M2) the perturbations also lowered accuracy before the trigger, so the attack could not stay secret. The paper reports 82.09% → 27.66% for ResNet-18 with 1,000 steps and 100 PGD iterations. After sweep 4, the only remaining difference from the authors' code is the model (SmallCNN, 0.4M weights, vs ResNet-18, 11M) and the stream length, so model capacity is the most likely reason the collapse does not appear at our scale.
 
 Also learned: an online learning rate of 0.01–0.1 broke a model trained with a cosine schedule (Adam) even without any attack; the single-step effect scales with the online learning rate.
 
