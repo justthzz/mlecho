@@ -10,6 +10,7 @@ import copy
 from dataclasses import dataclass
 
 import numpy as np
+import torch
 from torch.utils.data import Subset
 
 from mlecho.attacks.base import ImageDataset
@@ -33,6 +34,26 @@ def add_trigger(images: np.ndarray, config: BackdoorConfig) -> np.ndarray:
     stamped = images.copy()
     size = config.patch_size
     stamped[:, -size:, -size:] = config.patch_color
+    return stamped
+
+
+def add_trigger_tensor(
+    images: torch.Tensor,
+    config: BackdoorConfig,
+    pixel_mean: tuple[float, ...],
+    pixel_std: tuple[float, ...],
+) -> torch.Tensor:
+    """Same as `add_trigger`, for a batch already turned into normalised tensors.
+
+    `images` has shape (N, 3, height, width). The patch colour is converted with
+    the same `pixel_mean` / `pixel_std` that were used to normalise the batch.
+    """
+    color = torch.tensor(config.patch_color, dtype=images.dtype, device=images.device) / 255
+    mean = torch.tensor(pixel_mean, dtype=images.dtype, device=images.device)
+    std = torch.tensor(pixel_std, dtype=images.dtype, device=images.device)
+    stamped = images.clone()
+    size = config.patch_size
+    stamped[:, :, -size:, -size:] = ((color - mean) / std).view(1, -1, 1, 1)
     return stamped
 
 
