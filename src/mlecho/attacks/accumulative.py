@@ -31,6 +31,8 @@ from typing import Literal
 import torch
 from torch import nn
 
+from mlecho.attacks.gradients import dot, norm, trainable, unit
+
 
 @dataclass(frozen=True)
 class AccumulativeConfig:
@@ -67,7 +69,7 @@ def trigger_sensitivity(
     per-layer cosines. Moving the weights along -G makes one future step on
     the trigger batch increase the validation loss the most.
     """
-    params = _trainable(model)
+    params = trainable(model)
     with _keep_buffers(model):
         val_grad = torch.autograd.grad(
             loss_fn(model(val_batch[0]), val_batch[1]), params, create_graph=True
@@ -76,7 +78,7 @@ def trigger_sensitivity(
             loss_fn(model(trigger_batch[0]), trigger_batch[1]), params, create_graph=True
         )
         alignment = (
-            _layer_cosines(val_grad, trigger_grad) if per_layer else _dot(val_grad, trigger_grad)
+            _layer_cosines(val_grad, trigger_grad) if per_layer else dot(val_grad, trigger_grad)
         )
         return [g.detach() for g in torch.autograd.grad(alignment, params)]
 
@@ -97,7 +99,7 @@ def craft_accumulative_batch(
     real pixel units. Labels are never changed. The model is not updated.
     """
     images, labels = batch
-    params = _trainable(model)
+    params = trainable(model)
     std = torch.tensor(pixel_std, device=images.device).view(1, -1, 1, 1)
     mean = torch.tensor(pixel_mean, device=images.device).view(1, -1, 1, 1)
     bound, step = config.epsilon / std, config.step_size / std
@@ -107,13 +109,13 @@ def craft_accumulative_batch(
         clean_grad = torch.autograd.grad(loss_fn(model(images), labels), params)
         if config.per_layer:  # each layer: unit(clean) + lambda * unit(G), as in the authors' code
             target = [
-                _unit([c])[0] + config.trade_off * _unit([g])[0]
+                unit([c])[0] + config.trade_off * unit([g])[0]
                 for c, g in zip(clean_grad, sensitivity, strict=True)
             ]
         else:
             target = [
                 c + config.trade_off * g
-                for c, g in zip(_unit(clean_grad), _unit(sensitivity), strict=True)
+                for c, g in zip(unit(clean_grad), unit(sensitivity), strict=True)
             ]
 
         delta = torch.zeros_like(images)
@@ -125,9 +127,9 @@ def craft_accumulative_batch(
             if config.per_layer:
                 alignment = _layer_cosines(poisoned_grad, target)
             else:
-                alignment = _dot(poisoned_grad, target)
+                alignment = dot(poisoned_grad, target)
                 if config.objective == "cosine":
-                    alignment = alignment / _norm(poisoned_grad)  # direction only, up to scale
+                    alignment = alignment / norm(poisoned_grad)  # direction only, up to scale
             (pixel_grad,) = torch.autograd.grad(alignment, delta)
             delta = (delta + step * pixel_grad.sign()).detach()
             delta = torch.max(torch.min(delta, bound), -bound)  # stay within epsilon
@@ -136,29 +138,9 @@ def craft_accumulative_batch(
     return (images + delta).detach()
 
 
-def _trainable(model: nn.Module) -> list[torch.Tensor]:
-    return [p for p in model.parameters() if p.requires_grad]
-
-
-def _dot(first: Sequence[torch.Tensor], second: Sequence[torch.Tensor]) -> torch.Tensor:
-    """Dot product of two gradients, each given as one tensor per weight group."""
-    return sum((a * b).sum() for a, b in zip(first, second, strict=True))
-
-
-def _norm(gradient: Sequence[torch.Tensor]) -> torch.Tensor:
-    """Length of a gradient (all weight groups together)."""
-    return torch.sqrt(_dot(gradient, gradient)) + 1e-12
-
-
 def _layer_cosines(first: Sequence[torch.Tensor], second: Sequence[torch.Tensor]) -> torch.Tensor:
     """Sum over weight groups of the cosine between the two gradients' parts."""
-    return sum((_unit([a])[0] * b).sum() / _norm([b]) for a, b in zip(first, second, strict=True))
-
-
-def _unit(gradient: Sequence[torch.Tensor]) -> list[torch.Tensor]:
-    """The same direction, scaled to length 1."""
-    length = _norm(gradient)
-    return [g / length for g in gradient]
+    return sum((unit([a])[0] * b).sum() / norm([b]) for a, b in zip(first, second, strict=True))
 
 
 @contextmanager
