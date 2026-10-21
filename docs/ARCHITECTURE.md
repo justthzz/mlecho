@@ -33,7 +33,8 @@ mlecho/
 │
 ├── experiments/         numbered scripts that RUN things (01_, 02_, ...)
 │   ├── common.py        shared options + training loop with MLflow logging
-│   └── sweeps/          shell scripts that run tuning sweeps
+│   ├── figures_stepNN.py  redraw a step's figures from its MLflow runs (no training)
+│   └── sweeps/          shell scripts that run sweeps and repeated runs
 ├── tests/               automatic checks, one file per library area
 ├── docs/                ARCHITECTURE.md (this file), ROADMAP.md, RESULTS.md
 └── data/                not in git: CIFAR-10 download, checkpoints/ (saved weights)
