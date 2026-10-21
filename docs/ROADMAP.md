@@ -85,6 +85,17 @@ Notes:
 - Done when: each attack works (high ASR or clear damage) while clean accuracy stays close to the clean baseline (85.7%).
 
 ### 3. Detector (`src/mlecho/detection/`)
+
+#### Step 3 checklist
+- [x] **Decision: trusted clean data = the validation split (5,000)**: 4,000 to train the CNN-VAE (and later the label check), 1,000 to set thresholds. The detector never sees the 45,000 training images it later checks, so false-alarm rates aren't flattered by memorisation. The test split stays reserved for the victim.
+- [x] **3.1 CNN-VAE** `src/mlecho/detection/vae.py`: `ConvVAE` (3 strided convs 16/32/64 channels → adaptive pool → latent 32 → 3 transposed convs; any image size), `vae_loss` (summed MSE + β·KL), `train_vae_epoch`, `reconstruction_scores` (per-image mean squared error, eval mode uses the mean code so scores are repeatable). 183k weights (victim: 413k). 4 tests, incl. "an unseen square scores higher after training on plain images".
+- [ ] 3.2 Train the VAE on the trusted data; score clean training images vs each attack's poisoned images (per-image separation, ROC AUC) — the CNN-VAE feasibility result
+- [ ] 3.3 Thresholds from the 1,000 held-out clean images; per-image and per-batch detection (max / top-k / share above threshold); precision, recall, false-positive rate per attack
+- [ ] 3.4 Label check (reference model trained on the trusted data; allow for its normal error rate)
+- [ ] 3.5 Overhead vs NFR-P1 (< 5%)
+- [ ] 3.6 False alarms under legitimate change (brightness/colour shifts)
+- [ ] 3.7 PSI/KS baseline (Memorization Discrepancy if feasible)
+- [ ] 3.8 Figures + study guides
 - Check 1 (picture): CNN feature extractor + VAE trained only on clean data; anomaly score = reconstruction error.
 - Score **each image**, then combine per batch (max / top-k / share above threshold). A plain batch average would dilute a few poisoned images.
 - Report detection **per image** (which images are poisoned) and **per batch** (does this batch contain poison).
