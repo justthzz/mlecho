@@ -28,14 +28,15 @@ from torch import nn
 
 from mlecho.attacks.gradient_matching import (
     GradientMatchingConfig,
+    choose_poisons,
     craft_gradient_matching,
+    read_images,
     write_poisons,
 )
 from mlecho.bench.datasets import (
     CIFAR10_CLASSES,
     CIFAR10_MEAN,
     CIFAR10_STD,
-    cifar10_transform,
     get_cifar10_datasets,
     make_loaders,
 )
@@ -76,12 +77,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def as_tensors(raw: np.ndarray) -> torch.Tensor:
-    """Raw pixels (N, H, W, 3), 0-255 -> normalised tensors (N, 3, H, W), no augmentation."""
-    plain = cifar10_transform(augment=False)
-    return torch.stack([plain(image) for image in raw])
-
-
 def candidate_targets(model, test_set, args, device) -> list[int]:
     """Test images of the target class that the attacker's model gets right.
 
@@ -115,9 +110,8 @@ def main() -> None:
     attacker = load_weights(SmallCNN(width=args.width, norm=args.norm), args.attacker_model, device)
     candidates = candidate_targets(attacker, test_set, args, device)
     targets = candidates[: args.control_picks] if control else [candidates[args.target_pick]]
-    rng = np.random.default_rng(args.data_seed)
-    pool = [i for i in train_set.indices if full.targets[i] == args.poison_class]
-    positions = np.sort(rng.choice(pool, round(args.budget * len(train_set)), replace=False))
+    count = round(args.budget * len(train_set))
+    positions = choose_poisons(full, train_set.indices, args.poison_class, count, args.data_seed)
     if control:
         positions = positions[:0]  # nothing poisoned
 
@@ -138,7 +132,7 @@ def main() -> None:
             target_image = test_set[targets[0]][0].unsqueeze(0).to(device)
             wrong_label = torch.tensor([args.poison_class], device=device)
             poisons = (
-                as_tensors(originals).to(device),
+                read_images(full, positions, CIFAR10_MEAN, CIFAR10_STD).to(device),
                 torch.full((len(positions),), args.poison_class, device=device),
             )
             crafted = craft_gradient_matching(

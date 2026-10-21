@@ -99,6 +99,36 @@ def craft_gradient_matching(
     return ((pixels + delta - mean) / std).detach()
 
 
+def choose_poisons(
+    dataset: ImageDataset,
+    candidates: Sequence[int],
+    poison_class: int,
+    count: int,
+    seed: int,
+) -> np.ndarray:
+    """Pick `count` positions (sorted) among `candidates` whose label is `poison_class`.
+
+    These are the images the attacker will change. Their labels already are the
+    poison class and stay that way (clean-label).
+    """
+    pool = [i for i in candidates if dataset.targets[i] == poison_class]
+    return np.sort(np.random.default_rng(seed).choice(pool, count, replace=False))
+
+
+def read_images(
+    dataset: ImageDataset,
+    positions: Sequence[int],
+    pixel_mean: Sequence[float],
+    pixel_std: Sequence[float],
+) -> torch.Tensor:
+    """Raw pixels at `positions` as normalised tensors (N, 3, H, W): the opposite of
+    `write_poisons`."""
+    raw = torch.from_numpy(dataset.data[np.asarray(positions)]).permute(0, 3, 1, 2)
+    std = torch.tensor(pixel_std).view(1, -1, 1, 1)
+    mean = torch.tensor(pixel_mean).view(1, -1, 1, 1)
+    return (raw.float() / 255 - mean) / std
+
+
 def write_poisons(
     dataset: ImageDataset,
     positions: Sequence[int],

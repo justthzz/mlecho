@@ -4,7 +4,9 @@ from torch import nn
 
 from mlecho.attacks.gradient_matching import (
     GradientMatchingConfig,
+    choose_poisons,
     craft_gradient_matching,
+    read_images,
     write_poisons,
 )
 from mlecho.attacks.gradients import cosine, trainable
@@ -104,3 +106,20 @@ def test_write_poisons_stores_rounded_pixels_at_the_given_positions():
     assert (dataset.data[[1, 3]] == round(0.2 * 255)).all()
     assert (dataset.data[[0, 2, 4]] == 0).all()  # other images untouched
     assert dataset.targets == [6] * 5  # labels untouched (clean-label)
+
+
+def test_choose_poisons_picks_only_the_poison_class_repeatably():
+    dataset = _FakeDataset()
+    dataset.targets = [6, 1, 6, 6, 2]
+    picks = choose_poisons(dataset, range(5), poison_class=6, count=2, seed=0)
+    assert len(picks) == 2 and all(dataset.targets[i] == 6 for i in picks)
+    assert list(picks) == sorted(picks)
+    assert list(picks) == list(choose_poisons(dataset, range(5), 6, 2, seed=0))
+
+
+def test_read_images_is_the_opposite_of_write_poisons():
+    dataset = _FakeDataset()
+    images = (torch.full((2, 3, 8, 8), 0.2) - 0.5) / 0.25
+    write_poisons(dataset, [1, 3], images, MEAN, STD)
+    back = read_images(dataset, [1, 3], MEAN, STD)
+    assert torch.allclose(back, images, atol=1 / 255 / 0.25)  # equal up to 0-255 rounding
