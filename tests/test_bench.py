@@ -5,6 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from mlecho.bench.datasets import cifar10_transform, split_indices
+from mlecho.bench.evaluation import roc_auc
 from mlecho.bench.models import MaxPool2x2, SmallCNN
 from mlecho.bench.online import online_step
 from mlecho.bench.training import evaluate, predict, train_one_epoch
@@ -117,3 +118,12 @@ def test_small_cnn_group_norm_has_no_running_statistics_and_same_output_shape():
     assert not any(isinstance(m, torch.nn.BatchNorm2d) for m in model.modules())
     assert list(model.buffers()) == []  # nothing that training could quietly change
     assert model(torch.zeros(2, 3, 32, 32)).shape == (2, 10)
+
+
+def test_roc_auc_perfect_coin_flip_and_reversed():
+    low, high = torch.tensor([0.1, 0.2, 0.3]), torch.tensor([0.7, 0.8, 0.9])
+    assert roc_auc(low, high) == 1.0  # every poison above every clean image
+    assert roc_auc(high, low) == 0.0
+    assert roc_auc(torch.tensor([0.5, 0.5]), torch.tensor([0.5, 0.5])) == 0.5  # all tied
+    # 1 of 4 clean-poison pairs ranks the poison higher
+    assert roc_auc(torch.tensor([0.2, 0.6]), torch.tensor([0.1, 0.3])) == 0.25
