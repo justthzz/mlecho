@@ -108,8 +108,19 @@ def train_vae_epoch(
 
 
 @torch.no_grad()
-def reconstruction_scores(model: ConvVAE, images: torch.Tensor) -> torch.Tensor:
-    """Anomaly score per image: mean squared reconstruction error (higher = stranger)."""
+def reconstruction_scores(
+    model: ConvVAE, images: torch.Tensor, patch: int | None = None
+) -> torch.Tensor:
+    """Anomaly score per image from the reconstruction error (higher = stranger).
+
+    `patch=None`: mean squared error over the whole image. `patch=k`: the
+    error averaged over every k x k square, and the worst square is the score.
+    A small stuck-on pattern (like a 4x4 trigger) barely moves the whole-image
+    mean, but it stands out as one bad square.
+    """
     model.eval()
     rebuilt, _, _ = model(images)
-    return F.mse_loss(rebuilt, images, reduction="none").flatten(1).mean(dim=1)
+    error = F.mse_loss(rebuilt, images, reduction="none").mean(dim=1, keepdim=True)  # (N,1,H,W)
+    if patch is None:
+        return error.flatten(1).mean(dim=1)
+    return F.avg_pool2d(error, kernel_size=patch, stride=1).flatten(1).amax(dim=1)

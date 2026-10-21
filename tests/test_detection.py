@@ -63,3 +63,16 @@ def test_unusual_square_scores_higher_after_training_on_plain_images():
     squared = plain.clone()
     squared[:, :, -6:, -6:] = 3.0  # a bright square in the corner, never seen in training
     assert (reconstruction_scores(model, squared) > reconstruction_scores(model, plain)).all()
+
+
+def test_patch_score_reacts_more_than_mean_score_to_a_small_square():
+    torch.manual_seed(0)
+    model = ConvVAE(SMALL)
+    plain = _smooth_images(4, seed=2)
+    squared = plain.clone()
+    squared[:, :, -4:, -4:] = 3.0
+    mean_gain = reconstruction_scores(model, squared) / reconstruction_scores(model, plain)
+    patch_gain = reconstruction_scores(model, squared, patch=4) / reconstruction_scores(
+        model, plain, patch=4
+    )
+    assert (patch_gain > mean_gain).all()  # the square is diluted by a whole-image average
