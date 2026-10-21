@@ -127,3 +127,22 @@ Finding: **the attack works when the target is not already far from the wrong cl
 | control | – | – | – | – | 85.8% | `004e5cbc` |
 
 Final finding: **3 of 4 valid targets fooled** in from-scratch training (the 4th moved from 12% to 46% P(dog) but stayed "cat"); every poisoned target's P(dog) rose by 9 to 49 points, while clean accuracy stayed within 0.4 points of the control (85.4–85.8% vs 85.8%). The attack is clean-label (450 correctly labelled dogs, largest change 16/255, mean ~10/255). It works for targets near the wrong class, and not for random, confidently classified targets (dog → frog: 0 of 5). The paper uses ResNet-18 and 8 restarts; we use SmallCNN and 1 restart, which likely explains the narrower range of targets.
+
+## Experiment 07: CNN-VAE picture check, feasibility (step 3.2)
+
+`python experiments/07_detector_feasibility.py` · MLflow experiment `mlecho-detection` · run `daf37fdc`
+
+Setup: the CNN-VAE (183k weights; latent 32; β 1; Adam 1e-3, 60 epochs) is trained on 4,000 trusted clean **validation** images only; it never sees training images. 1,000 more validation images are held out. Score = reconstruction error. Separation is measured with ROC AUC against 5,000 clean **training** images (1.0 perfect, 0.5 coin flip).
+
+**Choosing the score fairly.** Candidate scores: whole-image mean error, or the worst k×k patch (k = 2, 4, 8). The choice is made on development data only: the 1,000 held-out trusted images with made-up attacks the guard could create itself (a 4×4 square of random colour at a random place; ±8/255 random noise), never on the real attacks. Development AUC (square / noise): mean 0.575 / 0.544, worst 2×2 0.625 / 0.508, **worst 4×4 0.760 / 0.510**, worst 8×8 0.658 / 0.518 → **worst 4×4 chosen**.
+
+| Images scored | n | AUC, whole-image mean | AUC, worst 4×4 (chosen) | Poisoned scores above its own original (4×4) |
+|---|---|---|---|---|
+| clean held-out (sanity) | 1,000 | 0.526 | 0.520 | – |
+| backdoor (4×4 yellow square) | 2,250 | 0.682 | **0.994** | 99.9% |
+| label-flip (pictures untouched) | 2,250 | 0.498 | 0.502 | – |
+| gradient matching (cat 8183 → dog) | 450 | 0.587 | 0.570 | 55.3% |
+
+(All four scorings are logged; worst 2×2 / 8×8 give backdoor AUC 0.915 / 0.912.)
+
+Finding: the picture check **separates the backdoor almost perfectly** once it looks at the worst local patch instead of the whole-image average (0.68 → 0.99): the square always adds error, but a whole-image mean dilutes 16 of 1,024 pixels below the natural spread between images. It does **not** see label-flip (expected: the pictures are normal; that is the label check's job) and barely sees **gradient matching** (0.57; invisible ±16/255 changes look like natural variation to the VAE), matching hypothesis H2 that clean-label attacks are the hardest. Clean unseen images are not flagged (0.52). An earlier run with only the whole-image mean (`5567d473`) gave the same mean-score numbers (backdoor 0.682, gradient matching 0.586).

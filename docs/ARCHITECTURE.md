@@ -37,7 +37,7 @@ mlecho/
 │   └── sweeps/          shell scripts that run sweeps and repeated runs
 ├── tests/               automatic checks, one file per library area
 ├── docs/                ARCHITECTURE.md (this file), ROADMAP.md, RESULTS.md
-└── data/                not in git: CIFAR-10 download, checkpoints/ (saved weights)
+└── data/                not in git: CIFAR-10 download, checkpoints/ (saved weights), poisons/ (cached crafted poisons)
 ```
 
 Folders are created when their step starts, not before. Which steps are done
