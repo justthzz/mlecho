@@ -2,12 +2,12 @@
 
 Build plan for the FYP. Update the status column and "Current step" when a step is finished.
 
-**Current step: 2 (attacks)**
+**Current step: 3 (detector)**, not started; waiting for Thanuja to be ready
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
 | 1 | Clean baseline | ✅ done | CIFAR-10 split, SmallCNN (width 64), augmentation, cosine LR, train/eval loop, MLflow run (85.7% test acc, 30 epochs, ~10 min on M2) | reference numbers |
-| 2 | Attacks | 🔄 all 4 attacks done and recorded; figure script and study guides left | poisoned data + proof the attack works while clean accuracy looks normal | "the problem is real" |
+| 2 | Attacks | ✅ all 4 attacks built, tested and recorded (Pang et al. partially reproduced; slow-drip used); figures + study guides done | poisoned data + proof the attack works while clean accuracy looks normal | "the problem is real" |
 | 3 | Detector | ⬜ | CNN-VAE picture check + label check, calibrated thresholds | RQ1 |
 | 4 | Classifier | ⬜ | attack-type classifier on detector features | RQ2 |
 | 5 | Rules + actions | ⬜ | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
@@ -50,7 +50,7 @@ Full numbers and MLflow run IDs: [RESULTS.md](RESULTS.md). Figures: `local-docs/
 - [x] Moved attacks from `bench/` to `src/mlecho/attacks/` (the guard needs them too) and made them dataset-agnostic (`attacks/base.py: ImageDataset`)
 - [x] Optional: does random-crop augmentation sometimes cut off the corner trigger? Yes, by counting (no run needed): RandomCrop(32, padding 4) has 9×9 equally likely offsets, so a poisoned training image shows the full 4×4 trigger 30.9% of the time, part of it 48.1%, and none 21.0%; the horizontal flip also moves it to the bottom-left half the time. The backdoor was still learned (ASR 99.96%), so augmentation weakens the trigger signal but doesn't stop the attack. For step 3: the detector sees training images after augmentation, so about 1 in 5 backdoor-poisoned images carries no visible trigger in a given epoch; count those separately when scoring detection.
 - [x] **Figure script** `experiments/figures_step02.py` (`python experiments/figures_step02.py`, ~1 min, trains nothing): redraws all 9 step 2 figures from the official MLflow runs into `local-docs/figures/step02-1…9-*.png`: backdoor examples + results, label-flip examples + per-class accuracy, accumulative sweeps 1–4, slow-drip curves, gradient-matching poisons + target P(dog), and an all-attacks summary. Okabe-Ito colour-blind-safe colours plus hatching and text labels; checked visually for overlaps. Replaced the old one-off figures. `matplotlib` added to the `dev` extra.
-- [ ] Study guides: `local-docs/learning/step-02-*.md` (concepts + code walkthrough)
+- [x] Study guides: `local-docs/learning/step-02-attacks.md` (concepts, results, viva questions, glossary), `step-02-code-walkthrough.md` (every file line by line, tests, Python features), plus `step-02-attack3-accumulative.md`
 
 #### Attack plan: how each attack is built and how we prove it works
 
