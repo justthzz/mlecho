@@ -1,6 +1,8 @@
+import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
+from mlecho.detection.thresholds import count_threshold, score_threshold
 from mlecho.detection.vae import (
     ConvVAE,
     VAEConfig,
@@ -76,3 +78,18 @@ def test_patch_score_reacts_more_than_mean_score_to_a_small_square():
         model, plain, patch=4
     )
     assert (patch_gain > mean_gain).all()  # the square is diluted by a whole-image average
+
+
+def test_score_threshold_leaves_the_requested_share_above():
+    scores = torch.arange(1000, dtype=torch.float)  # 0 .. 999
+    threshold = score_threshold(scores, 0.01)
+    assert (scores > threshold).float().mean().item() == pytest.approx(0.01, abs=0.002)
+
+
+def test_count_threshold_matches_chance_for_clean_groups():
+    scores = torch.arange(1000, dtype=torch.float)
+    threshold = score_threshold(scores, 0.01)  # each clean image flagged with chance ~1%
+    needed = count_threshold(scores, threshold, 128, 0.01, torch.Generator().manual_seed(0))
+    # Binomial(128, 0.01): P(>= 4) is about 3.9%, P(>= 5) about 0.9%
+    assert needed == 5
+    assert count_threshold(scores, threshold, 128, 0.0, torch.Generator().manual_seed(0)) > 5
