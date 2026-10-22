@@ -5,6 +5,7 @@ Lives in experiments/ (not src/) because it uses MLflow and prints progress.
 
 import argparse
 import time
+from types import SimpleNamespace
 
 import mlflow
 import numpy as np
@@ -12,7 +13,12 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from mlecho.attacks.backdoor import BackdoorConfig, poison_train_set
+from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
+from mlecho.bench.datasets import get_cifar10_datasets
+from mlecho.bench.evaluation import alarm_rates, image_metrics, simulate_flag_counts
 from mlecho.bench.training import evaluate, train_one_epoch
+from mlecho.detection.thresholds import count_threshold, score_threshold
 
 
 def add_training_args(parser: argparse.ArgumentParser) -> None:
@@ -118,3 +124,106 @@ def log_model(model: nn.Module, example_loader: DataLoader) -> None:
         input_example=example_images[:2].numpy(),  # example input, recorded with the model
         serialization_format="pickle",
     )
+
+
+# ---------- step 3: shared pieces of the detection experiments ----------
+
+
+def add_detection_args(parser: argparse.ArgumentParser) -> None:
+    """Options every detection experiment shares (thresholds and simulated streams)."""
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--fit-size", type=int, default=4000, help="trusted images to train on")
+    parser.add_argument("--image-rate", type=float, default=0.01, help="clean images flagged")
+    parser.add_argument("--batch-rate", type=float, default=0.01, help="clean batches alarmed")
+    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--window", type=int, default=10, help="batches per window")
+    parser.add_argument("--streams", type=int, default=1000, help="simulated batches per case")
+    parser.add_argument("--gm-cache", default="data/poisons/gradient-matching-cat8183.npz")
+    parser.add_argument("--mlflow-experiment", default="mlecho-detection")
+
+
+def detection_data(seed: int, fit_size: int, gm_cache: str) -> SimpleNamespace:
+    """Everything the detection experiments score, built the same way every time.
+
+    - fit / held_out: dataset positions of the trusted validation images
+    - train: positions of the 45,000 training images (rows of every score vector)
+    - backdoor / label_flip / gradient_matching: which rows each attack poisons
+    - gm_pixels: the crafted gradient-matching images (from experiment 07's cache)
+    - non_plane: rows whose true label isn't plane (slow-drip picks from these)
+    """
+    train_set, val_set, _ = get_cifar10_datasets(seed=seed, augment=False)
+    full = train_set.dataset
+    trusted = np.random.default_rng(seed).permutation(val_set.indices)
+    train = np.asarray(train_set.indices)
+    row = {position: k for k, position in enumerate(train)}
+    backdoor_view, _, _ = get_cifar10_datasets(seed=seed, augment=False)
+    flip_view, _, _ = get_cifar10_datasets(seed=seed, augment=False)
+    gm = np.load(gm_cache)
+    return SimpleNamespace(
+        full=full,
+        fit=trusted[:fit_size],
+        held_out=trusted[fit_size:],
+        train=train,
+        backdoor=[row[i] for i in poison_train_set(backdoor_view, BackdoorConfig(), seed)],
+        label_flip=[row[i] for i in flip_labels(flip_view, LabelFlipConfig(), seed)],
+        gradient_matching=[row[i] for i in gm["positions"]],
+        gm_pixels=gm["pixels"],
+        non_plane=np.flatnonzero(np.asarray(full.targets)[train] != 0),
+    )
+
+
+def report_detection(
+    reference: torch.Tensor,
+    clean: torch.Tensor,
+    attacks: dict[str, tuple[list[int], torch.Tensor]],
+    drip_pool: torch.Tensor,
+    args: argparse.Namespace,
+) -> None:
+    """Set thresholds on trusted `reference` scores, then report and log detection.
+
+    `clean`: score of every training image as clean. `attacks`: name -> (rows
+    poisoned, their scores once poisoned). `drip_pool`: scores of slow-drip
+    images. Logs to the active MLflow run and prints tables.
+    """
+    generator = torch.Generator().manual_seed(args.seed)
+    image_t = score_threshold(reference, args.image_rate)
+    batch_t = count_threshold(reference, image_t, args.batch_size, args.batch_rate, generator)
+    window_size = args.batch_size * args.window
+    window_t = count_threshold(reference, image_t, window_size, args.batch_rate, generator)
+    mlflow.log_metrics(
+        {"image_threshold": image_t, "batch_flags_needed": batch_t, "window_flags_needed": window_t}
+    )
+    print(
+        f"image threshold {image_t:.4f}; batch alarm at >= {batch_t} flags of {args.batch_size};"
+        f" window alarm at >= {window_t} flags in {args.window} batches"
+    )
+
+    print(f"\nPER IMAGE (threshold: {args.image_rate:.0%} of trusted clean images)")
+    for name, (rows, scores) in attacks.items():
+        others = clean[np.setdiff1d(np.arange(len(clean)), rows)]
+        metrics = image_metrics(others, scores, image_t)
+        mlflow.log_metrics({f"image_{k}_{name}": v for k, v in metrics.items()})
+        print(
+            f"{name:18s} recall {metrics['recall']:6.1%}  false-positive rate "
+            f"{metrics['fpr']:5.2%}  precision {metrics['precision']:6.1%}"
+        )
+
+    def poisoned_population(rows, scores):
+        population = clean.clone()
+        population[rows] = scores
+        return population
+
+    cases = {"clean": (clean, 0)}
+    cases |= {name: (poisoned_population(*a), 0) for name, a in attacks.items()}
+    cases |= {"slow_drip_1": (clean, 1), "slow_drip_5": (clean, 5)}
+    print(f"\nPER BATCH of {args.batch_size} / PER WINDOW of {args.window} batches")
+    for name, (population, per_batch) in cases.items():
+        counts = simulate_flag_counts(
+            population, image_t, args.streams, args.batch_size, generator, drip_pool, per_batch
+        )
+        batch_rate, window_rate = alarm_rates(counts, batch_t, args.window, window_t)
+        mlflow.log_metrics({f"batch_alarm_{name}": batch_rate, f"window_alarm_{name}": window_rate})
+        print(
+            f"{name:18s} mean flags/batch {counts.float().mean():5.2f}  "
+            f"batch alarm {batch_rate:6.1%}  window alarm {window_rate:6.1%}"
+        )
