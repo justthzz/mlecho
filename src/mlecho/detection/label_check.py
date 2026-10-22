@@ -63,3 +63,50 @@ def label_scores(model: nn.Module, images: torch.Tensor, labels: torch.Tensor) -
     model.eval()
     log_probabilities = F.log_softmax(model(images), dim=1)
     return -log_probabilities.gather(1, labels.view(-1, 1)).squeeze(1)
+
+
+def agreement_counts(
+    predictions: torch.Tensor, labels: torch.Tensor, num_classes: int
+) -> torch.Tensor:
+    """Row j, column i: how many images labelled j the reference model calls i."""
+    counts = torch.bincount(labels * num_classes + predictions, minlength=num_classes**2)
+    return counts.view(num_classes, num_classes).double()
+
+
+def pair_surprise(
+    predictions: torch.Tensor, labels: torch.Tensor, reference_counts: torch.Tensor
+) -> tuple[float, int, int]:
+    """The most over-represented (given label, looks-like class) pair in a group of images.
+
+    For each pair j != i, compares the share of images labelled j that the
+    reference calls i, in this group and in the trusted data, with a pooled
+    two-proportion z-test. The test allows for the trusted data being a sample
+    too (its shares are estimates, not exact). Returns (largest z, j, i): e.g. many
+    pictures that look like cats but are labelled dog give a large z for (dog, cat).
+    Single images can't show this; a batch or window can.
+    """
+    num_classes = reference_counts.shape[0]
+    group = agreement_counts(predictions, labels, num_classes)
+    n_group = group.sum(dim=1, keepdim=True)
+    n_ref = reference_counts.sum(dim=1, keepdim=True)
+    pooled = (group + reference_counts) / (n_group + n_ref).clamp_min(1)
+    spread = torch.sqrt(pooled * (1 - pooled) * (1 / n_group.clamp_min(1) + 1 / n_ref.clamp_min(1)))
+    z = (group / n_group.clamp_min(1) - reference_counts / n_ref.clamp_min(1)) / spread.clamp_min(
+        1e-12
+    )
+    z[n_group.expand_as(z) == 0] = 0.0  # no images with this label in the group
+    z.fill_diagonal_(float("-inf"))  # agreements are not suspicious
+    best = int(z.argmax())
+    return z.flatten()[best].item(), best // num_classes, best % num_classes
+
+
+def pair_threshold(num_classes: int, rate: float) -> float:
+    """z level that clean groups exceed only about `rate` of the time.
+
+    One-sided normal quantile, divided over all num_classes * (num_classes - 1)
+    pairs tested at once (Bonferroni), so the chance that *any* pair crosses it
+    is at most `rate`.
+    """
+    pairs = num_classes * (num_classes - 1)
+    normal = torch.distributions.Normal(0.0, 1.0)
+    return normal.icdf(torch.tensor(1 - rate / pairs, dtype=torch.float64)).item()

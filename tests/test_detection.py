@@ -2,7 +2,14 @@ import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from mlecho.detection.label_check import ReferenceCNN, label_scores, train_reference_epoch
+from mlecho.detection.label_check import (
+    ReferenceCNN,
+    agreement_counts,
+    label_scores,
+    pair_surprise,
+    pair_threshold,
+    train_reference_epoch,
+)
 from mlecho.detection.thresholds import count_threshold, score_threshold
 from mlecho.detection.vae import (
     ConvVAE,
@@ -118,3 +125,33 @@ def test_label_check_scores_a_wrong_label_higher_after_training():
     right = label_scores(model, images, labels)
     wrong = label_scores(model, images, 1 - labels)
     assert wrong.mean() > right.mean() and (wrong > right).float().mean() > 0.9
+
+
+def test_agreement_counts_follow_label_and_prediction():
+    counts = agreement_counts(torch.tensor([0, 0, 1, 1]), torch.tensor([0, 0, 0, 1]), 2)
+    assert torch.equal(counts, torch.tensor([[2.0, 1.0], [0.0, 1.0]], dtype=torch.float64))
+
+
+def test_pair_surprise_finds_the_flipped_pair_and_clean_groups_stay_quiet():
+    generator = torch.Generator().manual_seed(0)
+
+    def sample(n):  # a reference model that is wrong 20% of the time, to either other class
+        labels = torch.randint(0, 3, (n,), generator=generator)
+        shift = torch.randint(1, 3, (n,), generator=generator)
+        wrong = torch.rand(n, generator=generator) < 0.2
+        return torch.where(wrong, (labels + shift) % 3, labels), labels
+
+    reference = agreement_counts(*sample(600), 3)  # a small trusted set, 200 per class
+    level = pair_threshold(3, 0.05)
+    clean_alarms = sum(pair_surprise(*sample(300), reference)[0] > level for _ in range(300))
+    assert clean_alarms / 300 < 0.1  # about 5% or less, despite the small trusted set
+
+    predictions, labels = sample(300)
+    flip = (labels == 0) & (torch.rand(300, generator=generator) < 0.5)
+    labels[flip] = 2  # half the class-0 images relabelled as class 2
+    z, given, looks_like = pair_surprise(predictions, labels, reference)
+    assert (given, looks_like) == (2, 0) and z > level
+
+
+def test_pair_threshold_grows_with_more_pairs_and_stricter_rates():
+    assert pair_threshold(10, 0.01) > pair_threshold(3, 0.01) > pair_threshold(3, 0.1)
