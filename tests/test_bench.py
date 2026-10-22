@@ -1,11 +1,12 @@
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from mlecho.bench.datasets import cifar10_transform, split_indices
-from mlecho.bench.evaluation import roc_auc
+from mlecho.bench.evaluation import alarm_rates, image_metrics, roc_auc, simulate_flag_counts
 from mlecho.bench.models import MaxPool2x2, SmallCNN
 from mlecho.bench.online import online_step
 from mlecho.bench.training import evaluate, predict, train_one_epoch
@@ -127,3 +128,21 @@ def test_roc_auc_perfect_coin_flip_and_reversed():
     assert roc_auc(torch.tensor([0.5, 0.5]), torch.tensor([0.5, 0.5])) == 0.5  # all tied
     # 1 of 4 clean-poison pairs ranks the poison higher
     assert roc_auc(torch.tensor([0.2, 0.6]), torch.tensor([0.1, 0.3])) == 0.25
+
+
+def test_image_metrics_counts_recall_false_positives_and_precision():
+    clean = torch.tensor([0.1, 0.2, 0.3, 0.9])  # 1 of 4 clean above 0.5
+    poison = torch.tensor([0.8, 0.95])  # both above
+    metrics = image_metrics(clean, poison, threshold=0.5)
+    assert metrics == {"recall": 1.0, "fpr": 0.25, "precision": 2 / 3}
+
+
+def test_simulated_stream_and_alarm_rates():
+    population = torch.zeros(100)
+    population[:10] = 1.0  # 10% of images score above 0.5
+    generator = torch.Generator().manual_seed(0)
+    counts = simulate_flag_counts(population, 0.5, 400, 20, generator)
+    assert counts.float().mean().item() == pytest.approx(2.0, abs=0.3)
+    dripped = simulate_flag_counts(torch.zeros(100), 0.5, 10, 20, generator, torch.ones(5), 3)
+    assert (dripped == 3).all()  # exactly the 3 dripped images per batch are flagged
+    assert alarm_rates(torch.tensor([0, 5, 0, 0]), 5, 2, 5) == (0.25, 0.5)
