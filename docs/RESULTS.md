@@ -207,3 +207,45 @@ Label pattern (window alarm rate; "right pair" = share of alarms naming the flip
 Finding: false alarms match the 1% targets. The label pattern check **catches label-flip between classes the reference model rarely confuses and names the flipped pair correctly** (three pairs never looked at during design: 93–100% of windows). It **misses cat → dog**: the reference model (only 64.5% accurate from 5,000 images) already calls ~20% of dogs "cat", so flipping half the cats only raises that to ~28%, below what 1,280–6,400 images can prove against a 500-image reference. A stronger reference model (more trusted data or pretrained features) is the main lever; the label check also adds evidence for the backdoor (100% of 10-batch windows). Gradient matching stays invisible (correct labels).
 
 Development history (logged, superseded): `6d5e5e93` one reference model, per image only (label-flip recall 3.2%); `87101152` first label-pattern version with thresholds bootstrapped from the 1,000 held-out images, **miscalibrated** (84% of clean 10-batch windows alarmed, because it ignored that the trusted rates are estimates from ~100 images per class); `1572d1a7` two-proportion z with one model and per-batch patterns (27% clean batch alarms: counts too small for the normal approximation). The final design fixes both: cross-fitting (500 per class) and windows only.
+
+## Experiment 10: detection overhead (step 3.5, NFR-P1 < 5%)
+
+`python experiments/10_detection_overhead.py [--victim resnet18]` · MLflow experiment `mlecho-detection`
+
+Times 200 training batches (128 images, augmentation, Adam; data loading included) with and without the checks running on the batch. Picture check = CNN-VAE worst 4×4 score; label check = one reference model.
+
+| Setting | SmallCNN, run 1 (median of 3, quiet machine) | SmallCNN, run 3 (fastest of 5) | ResNet-18, run 1 (median of 3) | ResNet-18, run 3 (fastest of 5) |
+|---|---|---|---|---|
+| picture check, every batch | +3.8% | +6.0% | +2.7% | +10.8% |
+| label check, every batch | +14.5% | +25.6% | +16.5% | +19.5% |
+| both checks, every batch | +20.1% | +22.6% | +23.3% | +23.5% |
+| both checks, every 4th batch | +6.3% | +5.2% | +5.4% | +12.5% |
+| both checks, every 8th batch | +8.2% | +4.6% | +3.5% | +6.8% |
+| picture every batch, label every 8th | – | +8.2% | – | +6.1% |
+
+Runs: run 1 `faef6394` (SmallCNN) / `b58ab3fa` (ResNet-18) (an earlier SmallCNN run `ae6e9914` without the 8th-batch setting gave the same picture); run 2 (`exp10-11` log, 3 rounds) was disturbed by other load on the laptop (single runs up to 33 s vs 8.5 s) and is not used; run 3 `f7952d97` / `3df7abed` (fastest of 5, load average ≈ 3).
+
+Finding: running **both checks on every batch costs ~20–25%**, far above the 5% target; most of it is the label check (~15–25%). The picture check alone costs ~3–11%. Checking only every 8th batch brings both checks to **~3.5–8%**. Measurements on this shared laptop vary by about ±5 points between runs, so the 5% target is met only by sampled checking and must be re-measured on an idle machine for the final report. ResNet-18 is only ~2× slower per batch than SmallCNN here because CPU data loading dominates, so a bigger victim doesn't shrink the relative overhead as much as expected. Design consequence: the guard needs a `check_every` setting (picture check frequently, label check on sampled batches, which suits its window-level pattern test).
+
+## Experiment 11: false alarms under legitimate change (step 3.6)
+
+`python experiments/11_false_alarms_under_shift.py` · MLflow experiment `mlecho-detection` · run `7bbc3de8`
+
+10,000 clean training images with harmless changes applied; thresholds calibrated on the unchanged trusted data (as in experiments 08 and 09). No image is poisoned, so every alarm is false. Rates: share of images flagged / batches alarmed / 10-batch windows alarmed; label pattern = 10-batch windows.
+
+| Change | Picture: image / batch / window | Label: image / batch / window | Label pattern |
+|---|---|---|---|
+| none | 1.0% / 0.8% / 0% | 1.0% / 0.9% / 1% | 4% |
+| brighter ×1.3 | 5.2% / 79.6% / **100%** | 1.7% / 8.6% / 49% | 76% |
+| darker ×0.7 | 0% / 0% / 0% | 1.0% / 0.9% / 0% | 83% |
+| more contrast ×1.5 | 17.7% / **100%** / **100%** | 2.2% / 14% / 83% | 89% |
+| less contrast ×0.6 | 0% / 0% / 0% | 1.7% / 8.2% / 46% | **100%** |
+| more colour ×1.5 | 1.7% / 7.8% / 51% | 1.4% / 4.0% / 13% | 21% |
+| less colour ×0.5 | 0.9% / 0.6% / 0% | 1.0% / 1.4% / 0% | 24% |
+| hue shift 0.05 | 1.0% / 0.6% / 0% | 1.4% / 3.4% / 12% | 93% |
+| blur (σ 0.8) | 0.1% / 0% / 0% | 4.4% / 66.9% / **100%** | **100%** |
+| sensor noise 4/255 | 0.9% / 0.5% / 0% | 1.0% / 0.4% / 1% | 75% |
+
+(`4e8a81f8` is an earlier run of the same script that stopped before logging, on an invalid metric name.)
+
+Finding: on unchanged data the false-alarm rates match the 1% targets (label pattern 4% on these 100 windows). But **harmless changes trigger the alarms**: the picture check fires on brighter or higher-contrast images (100% of windows), the label check on blur, and the label pattern test on almost every change (75–100%), because any change shifts the reference model's confusions. The checks detect **"different from the trusted data"**, not "poisoned" specifically. Consequences: (1) the guard must be recalibrated with a fresh trusted sample when the data source changes (stated assumption: calibration data is clean and representative); (2) step 4's classifier should include a "benign shift" class so the response can escalate to a human instead of quarantining data.
