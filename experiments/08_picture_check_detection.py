@@ -18,14 +18,11 @@ View:  mlflow ui --port 5050   (then open http://127.0.0.1:5050)
 import argparse
 
 import mlflow
-import numpy as np
-import torch
-from common import add_detection_args, detection_data, report_detection
+from common import add_detection_args, detection_data, picture_scores, report_detection
 
 from mlecho.attacks.backdoor import BackdoorConfig, add_trigger
-from mlecho.bench.datasets import CIFAR10_MEAN, CIFAR10_STD
 from mlecho.core import get_device, load_weights, seed_everything
-from mlecho.detection.vae import ConvVAE, VAEConfig, reconstruction_scores
+from mlecho.detection.vae import ConvVAE, VAEConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,17 +33,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--latent", type=int, default=32, help="must match the saved VAE")
     parser.add_argument("--patch", type=int, default=4, help="chosen in experiment 07")
     return parser.parse_args()
-
-
-def picture_scores(model: ConvVAE, raw: np.ndarray, patch: int, device) -> torch.Tensor:
-    """Worst-patch score for raw images (N, H, W, 3), in chunks."""
-    mean = torch.tensor(CIFAR10_MEAN).view(1, 3, 1, 1)
-    std = torch.tensor(CIFAR10_STD).view(1, 3, 1, 1)
-    out = []
-    for start in range(0, len(raw), 1000):
-        chunk = torch.from_numpy(raw[start : start + 1000]).permute(0, 3, 1, 2).float() / 255
-        out.append(reconstruction_scores(model, ((chunk - mean) / std).to(device), patch).cpu())
-    return torch.cat(out)
 
 
 def main() -> None:

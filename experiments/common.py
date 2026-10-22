@@ -15,10 +15,12 @@ from torch.utils.data import DataLoader
 
 from mlecho.attacks.backdoor import BackdoorConfig, poison_train_set
 from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
-from mlecho.bench.datasets import get_cifar10_datasets
+from mlecho.bench.datasets import CIFAR10_MEAN, CIFAR10_STD, get_cifar10_datasets
 from mlecho.bench.evaluation import alarm_rates, image_metrics, simulate_flag_counts
 from mlecho.bench.training import evaluate, train_one_epoch
+from mlecho.detection.label_check import label_scores
 from mlecho.detection.thresholds import count_threshold, score_threshold
+from mlecho.detection.vae import reconstruction_scores
 
 
 def add_training_args(parser: argparse.ArgumentParser) -> None:
@@ -227,3 +229,41 @@ def report_detection(
             f"{name:18s} mean flags/batch {counts.float().mean():5.2f}  "
             f"batch alarm {batch_rate:6.1%}  window alarm {window_rate:6.1%}"
         )
+
+
+def normalise_raw(raw: np.ndarray) -> torch.Tensor:
+    """Raw CIFAR-10 pixels (N, H, W, 3), 0-255 -> normalised tensors (N, 3, H, W)."""
+    images = torch.from_numpy(raw).permute(0, 3, 1, 2).float() / 255
+    mean = torch.tensor(CIFAR10_MEAN).view(1, 3, 1, 1)
+    std = torch.tensor(CIFAR10_STD).view(1, 3, 1, 1)
+    return (images - mean) / std
+
+
+def picture_scores(model: nn.Module, raw: np.ndarray, patch: int, device) -> torch.Tensor:
+    """Picture-check score (worst `patch` x `patch` reconstruction error) for raw images."""
+    return torch.cat(
+        [
+            reconstruction_scores(
+                model, normalise_raw(raw[start : start + 1000]).to(device), patch
+            ).cpu()
+            for start in range(0, len(raw), 1000)
+        ]
+    )
+
+
+def label_check_scores(
+    models: list[nn.Module], raw: np.ndarray, labels: np.ndarray, which: np.ndarray, device
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(surprise scores, predicted classes) for raw images; image k uses models[which[k]]."""
+    scores = torch.empty(len(raw))
+    predictions = torch.empty(len(raw), dtype=torch.long)
+    for f, model in enumerate(models):
+        rows = np.flatnonzero(which == f)
+        for start in range(0, len(rows), 1000):
+            part = rows[start : start + 1000]
+            images = normalise_raw(raw[part]).to(device)
+            batch_labels = torch.as_tensor(labels[part]).to(device)
+            scores[part] = label_scores(model, images, batch_labels).cpu()
+            with torch.no_grad():
+                predictions[part] = model(images).argmax(dim=1).cpu()
+    return scores, predictions

@@ -24,17 +24,21 @@ import argparse
 import mlflow
 import numpy as np
 import torch
-from common import add_detection_args, detection_data, report_detection
+from common import (
+    add_detection_args,
+    detection_data,
+    label_check_scores,
+    report_detection,
+)
 from torch.utils.data import DataLoader, Subset
 
 from mlecho.attacks.backdoor import BackdoorConfig, add_trigger
 from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
-from mlecho.bench.datasets import CIFAR10_CLASSES, CIFAR10_MEAN, CIFAR10_STD, get_cifar10_datasets
+from mlecho.bench.datasets import CIFAR10_CLASSES, get_cifar10_datasets
 from mlecho.core import get_device, save_weights, seed_everything
 from mlecho.detection.label_check import (
     ReferenceCNN,
     agreement_counts,
-    label_scores,
     pair_surprise,
     pair_threshold,
     train_reference_epoch,
@@ -53,25 +57,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--windows", type=int, nargs="+", default=[10, 50], help="batches")
     parser.add_argument("--save-prefix", default="data/checkpoints/reference-w32-seed42-fold")
     return parser.parse_args()
-
-
-def run_models(models, raw: np.ndarray, labels: np.ndarray, which: np.ndarray, device):
-    """(surprise scores, predicted classes) for raw images; image k uses models[which[k]]."""
-    mean = torch.tensor(CIFAR10_MEAN).view(1, 3, 1, 1)
-    std = torch.tensor(CIFAR10_STD).view(1, 3, 1, 1)
-    scores = torch.empty(len(raw))
-    predictions = torch.empty(len(raw), dtype=torch.long)
-    for f, model in enumerate(models):
-        rows = np.flatnonzero(which == f)
-        for start in range(0, len(rows), 1000):
-            part = rows[start : start + 1000]
-            images = torch.from_numpy(raw[part]).permute(0, 3, 1, 2).float() / 255
-            images = ((images - mean) / std).to(device)
-            batch_labels = torch.as_tensor(labels[part]).to(device)
-            scores[part] = label_scores(model, images, batch_labels).cpu()
-            with torch.no_grad():
-                predictions[part] = model(images).argmax(dim=1).cpu()
-    return scores, predictions
 
 
 def main() -> None:
@@ -108,7 +93,7 @@ def main() -> None:
             print(f"reference model {f + 1}/{args.folds} trained")
 
         trusted_labels = targets[trusted]
-        reference, trusted_pred = run_models(
+        reference, trusted_pred = label_check_scores(
             models, data.full.data[trusted], trusted_labels, fold_of_trusted, device
         )
         accuracy = (trusted_pred.numpy() == trusted_labels).mean()
@@ -118,17 +103,17 @@ def main() -> None:
         # Every training image gets one randomly chosen fold model.
         which = np.random.default_rng(args.seed).integers(0, args.folds, len(data.train))
         train_raw, true = data.full.data[data.train], targets[data.train]
-        clean, clean_pred = run_models(models, train_raw, true, which, device)
+        clean, clean_pred = label_check_scores(models, train_raw, true, which, device)
         planes = np.zeros(len(train_raw), dtype=np.int64)  # backdoor / slow-drip label
-        squared, squared_pred = run_models(
+        squared, squared_pred = label_check_scores(
             models, add_trigger(train_raw, BackdoorConfig()), planes, which, device
         )
         flip_rows = data.label_flip
-        flipped, _ = run_models(
+        flipped, _ = label_check_scores(
             models, train_raw[flip_rows], np.full(len(flip_rows), 5), which[flip_rows], device
         )
         gm_rows = data.gradient_matching
-        gm_scores, gm_pred = run_models(
+        gm_scores, gm_pred = label_check_scores(
             models, data.gm_pixels, true[gm_rows], which[gm_rows], device
         )
 
