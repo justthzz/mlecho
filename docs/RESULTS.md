@@ -146,3 +146,30 @@ Setup: the CNN-VAE (183k weights; latent 32; β 1; Adam 1e-3, 60 epochs) is trai
 (All four scorings are logged; worst 2×2 / 8×8 give backdoor AUC 0.915 / 0.912.)
 
 Finding: the picture check **separates the backdoor almost perfectly** once it looks at the worst local patch instead of the whole-image average (0.68 → 0.99): the square always adds error, but a whole-image mean dilutes 16 of 1,024 pixels below the natural spread between images. It does **not** see label-flip (expected: the pictures are normal; that is the label check's job) and barely sees **gradient matching** (0.57; invisible ±16/255 changes look like natural variation to the VAE), matching hypothesis H2 that clean-label attacks are the hardest. Clean unseen images are not flagged (0.52). An earlier run with only the whole-image mean (`5567d473`) gave the same mean-score numbers (backdoor 0.682, gradient matching 0.586).
+
+## Experiment 08: picture check detection rates (step 3.3)
+
+`python experiments/08_picture_check_detection.py` · MLflow experiment `mlecho-detection` · run `b3727d2f`
+
+The CNN-VAE from experiment 07 with its chosen score (worst 4×4 patch). All thresholds come from the 1,000 trusted held-out images only: **image threshold** = 1% of clean images flagged (score 2.73); **batch alarm** = at least 5 flags in a batch of 128 (≤ 1% of clean batches); **window alarm** = at least 23 flags in 10 batches (≤ 1% of clean windows). Evaluated on the 45,000 training images, which the detector never saw.
+
+Per image:
+
+| Attack | Poisoned / total | Recall | False-positive rate | Precision |
+|---|---|---|---|---|
+| backdoor | 2,250 / 45,000 | **88.3%** | 0.99% | **82.5%** |
+| label-flip | 2,250 / 45,000 | 1.2% | 0.96% | 6.2% |
+| gradient matching | 450 / 45,000 | 0.4% | 0.97% | 0.5% |
+
+Per batch (128 images) and per window (10 batches), 1,000 simulated batches each (100 windows):
+
+| Stream | Mean flags per batch | Batch alarm | Window alarm |
+|---|---|---|---|
+| clean | 1.21 | 0.5% | 0.0% |
+| backdoor (5%, as poisoned) | 6.73 | **80.7%** | **100%** |
+| label-flip (5%) | 1.27 | 1.0% | 1.0% |
+| gradient matching (1%) | 1.25 | 1.6% | 1.0% |
+| slow-drip, 1 per batch | 2.10 | 3.3% | **40%** |
+| slow-drip, 5 per batch | 5.59 | **81.0%** | **100%** |
+
+Finding: the false-positive rates measured on unseen training images (0.96–0.99% per image, 0.5% per batch, 0% per window) match the 1% targets set on the trusted data, so the calibration transfers. The picture check catches the **backdoor** (88% of poisoned images, 81% of batches, every 10-batch window) and **slow-drip at 5 per batch**. At **1 per batch**, single batches rarely alarm (3.3%), but adding up flags over 10 batches catches 40% of windows: cross-batch evidence matters, as expected. **Label-flip and gradient matching are invisible** to the picture check (at chance level); label-flip is the label check's job (step 3.4), and gradient matching remains the hardest case (H2).
