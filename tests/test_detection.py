@@ -2,6 +2,7 @@ import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
+from mlecho.detection.label_check import ReferenceCNN, label_scores, train_reference_epoch
 from mlecho.detection.thresholds import count_threshold, score_threshold
 from mlecho.detection.vae import (
     ConvVAE,
@@ -93,3 +94,27 @@ def test_count_threshold_matches_chance_for_clean_groups():
     # Binomial(128, 0.01): P(>= 4) is about 3.9%, P(>= 5) about 0.9%
     assert needed == 5
     assert count_threshold(scores, threshold, 128, 0.0, torch.Generator().manual_seed(0)) > 5
+
+
+def test_reference_model_any_size_and_label_scores_match_cross_entropy():
+    model = ReferenceCNN(width=8)
+    for size in (32, 40):
+        assert model(torch.zeros(2, 3, size, size)).shape == (2, 10)
+    images, labels = torch.randn(4, 3, 32, 32), torch.tensor([0, 3, 5, 9])
+    scores = label_scores(model, images, labels)
+    expected = torch.nn.functional.cross_entropy(model.eval()(images), labels, reduction="none")
+    assert torch.allclose(scores, expected, atol=1e-6)
+
+
+def test_label_check_scores_a_wrong_label_higher_after_training():
+    torch.manual_seed(0)
+    model = ReferenceCNN(width=8)
+    images = _smooth_images(64)
+    labels = (images[:, 0, 0, -1] > 0).long()  # class 1 = reddish images, class 0 = the rest
+    loader = DataLoader(TensorDataset(images, labels), batch_size=16, shuffle=True)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+    for _ in range(15):
+        train_reference_epoch(model, loader, optimizer, torch.device("cpu"))
+    right = label_scores(model, images, labels)
+    wrong = label_scores(model, images, 1 - labels)
+    assert wrong.mean() > right.mean() and (wrong > right).float().mean() > 0.9
