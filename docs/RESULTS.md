@@ -173,3 +173,37 @@ Per batch (128 images) and per window (10 batches), 1,000 simulated batches each
 | slow-drip, 5 per batch | 5.59 | **81.0%** | **100%** |
 
 Finding: the false-positive rates measured on unseen training images (0.96–0.99% per image, 0.5% per batch, 0% per window) match the 1% targets set on the trusted data, so the calibration transfers. The picture check catches the **backdoor** (88% of poisoned images, 81% of batches, every 10-batch window) and **slow-drip at 5 per batch**. At **1 per batch**, single batches rarely alarm (3.3%), but adding up flags over 10 batches catches 40% of windows: cross-batch evidence matters, as expected. **Label-flip and gradient matching are invisible** to the picture check (at chance level); label-flip is the label check's job (step 3.4), and gradient matching remains the hardest case (H2).
+
+## Experiment 09: label check detection rates (step 3.4)
+
+`python experiments/09_label_check_detection.py` · MLflow experiment `mlecho-detection` · run `02cb63dd`
+
+Setup: small reference classifiers (`ReferenceCNN`, width 32) trained only on the 5,000 trusted validation images with **5-fold cross-fitting** (each model trains on 4,000 and predicts the other 1,000), so the check's normal behaviour is measured out-of-fold on all 5,000 (500 per class). Out-of-fold accuracy: **64.5%**. Each training image is checked by one randomly chosen fold model. Two checks:
+- **per image:** surprise = −log P(label | picture); thresholds as in experiment 08 (1% of trusted images, 1% of batches / windows);
+- **label pattern:** in a window of batches, the most over-represented (given label, looks-like class) pair, as a pooled two-proportion z against the trusted data; alarm at z > 3.69 (1% split over all 90 pairs, Bonferroni).
+
+Per image:
+
+| Attack | Recall | False-positive rate | Precision |
+|---|---|---|---|
+| backdoor (picture labelled plane) | 45.8% | 0.94% | 72.0% |
+| label-flip cat → dog | 4.0% | 0.95% | 18.4% |
+| gradient matching | 0.4% | 0.94% | 0.5% |
+
+Per batch / 10-batch window (flag counts): clean 0.1% / 0%; backdoor 23% / **100%**; label-flip 0.1% / 0%; gradient matching 0.2% / 1%; slow-drip 1 per batch 0.6% / 9%; 5 per batch 10% / **100%**.
+
+Label pattern (window alarm rate; "right pair" = share of alarms naming the flipped pair):
+
+| Stream | 10-batch window | 50-batch window |
+|---|---|---|
+| clean | 1.0% | 0.0% |
+| backdoor | 67% | 88% |
+| gradient matching | 2% | 0% |
+| **label-flip cat → dog (the attack)** | 4% | 2% (right pair 100%) |
+| label-flip deer → horse (unseen pair) | **93%** (right 100%) | **100%** (right 100%) |
+| label-flip truck → car (unseen pair) | **100%** (right 100%) | **100%** (right 100%) |
+| label-flip plane → bird (unseen pair) | **100%** (right 100%) | **100%** (right 100%) |
+
+Finding: false alarms match the 1% targets. The label pattern check **catches label-flip between classes the reference model rarely confuses and names the flipped pair correctly** (three pairs never looked at during design: 93–100% of windows). It **misses cat → dog**: the reference model (only 64.5% accurate from 5,000 images) already calls ~20% of dogs "cat", so flipping half the cats only raises that to ~28%, below what 1,280–6,400 images can prove against a 500-image reference. A stronger reference model (more trusted data or pretrained features) is the main lever; the label check also adds evidence for the backdoor (100% of 10-batch windows). Gradient matching stays invisible (correct labels).
+
+Development history (logged, superseded): `6d5e5e93` one reference model, per image only (label-flip recall 3.2%); `87101152` first label-pattern version with thresholds bootstrapped from the 1,000 held-out images, **miscalibrated** (84% of clean 10-batch windows alarmed, because it ignored that the trusted rates are estimates from ~100 images per class); `1572d1a7` two-proportion z with one model and per-batch patterns (27% clean batch alarms: counts too small for the normal approximation). The final design fixes both: cross-fitting (500 per class) and windows only.
