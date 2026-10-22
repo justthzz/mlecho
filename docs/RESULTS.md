@@ -149,7 +149,7 @@ Finding: the picture check **separates the backdoor almost perfectly** once it l
 
 ## Experiment 08: picture check detection rates (step 3.3)
 
-`python experiments/08_picture_check_detection.py` · MLflow experiment `mlecho-detection` · run `b3727d2f`
+`python experiments/08_picture_check_detection.py` · MLflow experiment `mlecho-detection` · run `b3727d2f` (rerun after refactoring, identical numbers: `613f2371`)
 
 The CNN-VAE from experiment 07 with its chosen score (worst 4×4 patch). All thresholds come from the 1,000 trusted held-out images only: **image threshold** = 1% of clean images flagged (score 2.73); **batch alarm** = at least 5 flags in a batch of 128 (≤ 1% of clean batches); **window alarm** = at least 23 flags in 10 batches (≤ 1% of clean windows). Evaluated on the 45,000 training images, which the detector never saw.
 
