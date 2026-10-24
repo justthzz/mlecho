@@ -16,17 +16,23 @@ import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import torch
-from mlflow.tracking import MlflowClient
+from common import (
+    ATTACK_COLOUR,
+    CLEAN_COLOUR,
+    GREEN,
+    GREY,
+    ORANGE,
+    VERMILLION,
+    Results,
+    label_bars,
+    show_row,
+)
 from torch.utils.data import DataLoader
 
 from mlecho.attacks.backdoor import BackdoorConfig, add_trigger
 from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
 from mlecho.bench.datasets import CIFAR10_CLASSES, cifar10_transform, get_cifar10_datasets
 from mlecho.bench.training import predict
-
-# Okabe-Ito colour-blind-safe palette
-BLUE, ORANGE, GREEN, VERMILLION, GREY = "#0072B2", "#E69F00", "#009E73", "#D55E00", "#999999"
-CLEAN_COLOUR, ATTACK_COLOUR = BLUE, ORANGE
 
 # Official runs (docs/RESULTS.md)
 RUNS = {
@@ -42,71 +48,11 @@ RUNS = {
 GM_TARGETS = {8183: "dbefe861", 4975: "65b96ff7", 2231: "954b9141", 669: "50a8de63"}
 
 
-class Results:
-    """Small helper to read MLflow runs by the 8-character IDs used in RESULTS.md."""
-
-    def __init__(self) -> None:
-        self.client = MlflowClient()
-        self._ids: dict[str, str] = {}
-
-    def full_id(self, short: str) -> str:
-        if short not in self._ids:
-            runs = mlflow.search_runs(
-                search_all_experiments=True, filter_string=f"attributes.run_id LIKE '{short}%'"
-            )
-            self._ids[short] = runs.run_id[0]
-        return self._ids[short]
-
-    def metric(self, short: str, key: str) -> float:
-        return self.client.get_run(self.full_id(short)).data.metrics[key]
-
-    def history(self, short: str, key: str) -> tuple[list[int], list[float]]:
-        points = sorted(
-            self.client.get_metric_history(self.full_id(short), key), key=lambda m: m.step
-        )
-        return [m.step for m in points], [m.value for m in points]
-
-    def model(self, short: str) -> torch.nn.Module:
-        return mlflow.pytorch.load_model(f"runs:/{self.full_id(short)}/model", map_location="cpu")
-
-    def image(self, short: str, path: str) -> np.ndarray:
-        local = self.client.download_artifacts(self.full_id(short), path)
-        return plt.imread(local)
-
-
 def predict_each(model: torch.nn.Module, raw: np.ndarray) -> list[int]:
     """Predicted class for each raw image, one at a time (older saved models need that)."""
     plain = cifar10_transform(augment=False)
     with torch.no_grad():
         return [int(model(plain(image).unsqueeze(0)).argmax()) for image in raw]
-
-
-def show_row(axes, images, titles, row_label=None) -> None:
-    for ax, image, title in zip(axes, images, titles, strict=True):
-        ax.imshow(image)
-        ax.set_title(title, fontsize=8)
-        ax.set_xticks([])
-        ax.set_yticks([])
-    if row_label:
-        axes[0].set_ylabel(row_label, fontsize=9)
-
-
-def percent(value: float) -> str:
-    """One decimal, or two near 100% (so 99.96% isn't shown as 100.0%)."""
-    return f"{value:.2f}%" if 99.5 < value < 100 else f"{value:.1f}%"
-
-
-def label_bars(ax, bars, fmt=percent) -> None:
-    """Write each bar's value above it. `fmt` is a format string or a function."""
-    for bar in bars:
-        height = bar.get_height()
-        ax.annotate(
-            fmt(height) if callable(fmt) else fmt.format(height),
-            (bar.get_x() + bar.get_width() / 2, height),
-            ha="center",
-            va="bottom",
-            fontsize=7,
-        )
 
 
 # ---------- attack 1: backdoor ----------

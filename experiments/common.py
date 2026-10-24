@@ -7,9 +7,11 @@ import argparse
 import time
 from types import SimpleNamespace
 
+import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import torch
+from mlflow.tracking import MlflowClient
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -267,3 +269,70 @@ def label_check_scores(
             with torch.no_grad():
                 predictions[part] = model(images).argmax(dim=1).cpu()
     return scores, predictions
+
+
+# ---------- figures: shared by the figures_stepNN.py scripts ----------
+
+# Okabe-Ito colour-blind-safe palette
+BLUE, ORANGE, GREEN, VERMILLION, GREY = "#0072B2", "#E69F00", "#009E73", "#D55E00", "#999999"
+CLEAN_COLOUR, ATTACK_COLOUR = BLUE, ORANGE
+
+
+class Results:
+    """Small helper to read MLflow runs by the 8-character IDs used in RESULTS.md."""
+
+    def __init__(self) -> None:
+        self.client = MlflowClient()
+        self._ids: dict[str, str] = {}
+
+    def full_id(self, short: str) -> str:
+        if short not in self._ids:
+            runs = mlflow.search_runs(
+                search_all_experiments=True, filter_string=f"attributes.run_id LIKE '{short}%'"
+            )
+            self._ids[short] = runs.run_id[0]
+        return self._ids[short]
+
+    def metric(self, short: str, key: str) -> float:
+        return self.client.get_run(self.full_id(short)).data.metrics[key]
+
+    def history(self, short: str, key: str) -> tuple[list[int], list[float]]:
+        points = sorted(
+            self.client.get_metric_history(self.full_id(short), key), key=lambda m: m.step
+        )
+        return [m.step for m in points], [m.value for m in points]
+
+    def model(self, short: str) -> torch.nn.Module:
+        return mlflow.pytorch.load_model(f"runs:/{self.full_id(short)}/model", map_location="cpu")
+
+    def image(self, short: str, path: str) -> np.ndarray:
+        local = self.client.download_artifacts(self.full_id(short), path)
+        return plt.imread(local)
+
+
+def show_row(axes, images, titles, row_label=None) -> None:
+    for ax, image, title in zip(axes, images, titles, strict=True):
+        ax.imshow(image)
+        ax.set_title(title, fontsize=8)
+        ax.set_xticks([])
+        ax.set_yticks([])
+    if row_label:
+        axes[0].set_ylabel(row_label, fontsize=9)
+
+
+def percent(value: float) -> str:
+    """One decimal, or two near 100% (so 99.96% isn't shown as 100.0%)."""
+    return f"{value:.2f}%" if 99.5 < value < 100 else f"{value:.1f}%"
+
+
+def label_bars(ax, bars, fmt=percent) -> None:
+    """Write each bar's value above it. `fmt` is a format string or a function."""
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(
+            fmt(height) if callable(fmt) else fmt.format(height),
+            (bar.get_x() + bar.get_width() / 2, height),
+            ha="center",
+            va="bottom",
+            fontsize=7,
+        )
