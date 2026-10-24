@@ -2,13 +2,13 @@
 
 Build plan for the FYP. Update the status column and "Current step" when a step is finished.
 
-**Current step: 3 (detector)**, not started; waiting for Thanuja to be ready
+**Current step: 4 (classifier)**, not started; waiting for Thanuja to be ready
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
 | 1 | Clean baseline | ✅ done | CIFAR-10 split, SmallCNN (width 64), augmentation, cosine LR, train/eval loop, MLflow run (85.7% test acc, 30 epochs, ~10 min on M2) | reference numbers |
 | 2 | Attacks | ✅ all 4 attacks built, tested and recorded (Pang et al. partially reproduced; slow-drip used); figures + study guides done | poisoned data + proof the attack works while clean accuracy looks normal | "the problem is real" |
-| 3 | Detector | ⬜ | CNN-VAE picture check + label check, calibrated thresholds | RQ1 |
+| 3 | Detector | ✅ picture check (backdoor AUC 0.994, 100% of windows) + label check (label pattern catches distinct-class flips; misses cat→dog, gradient matching); overhead, false alarms under shift and KS/PSI baselines measured | CNN-VAE picture check + label check, calibrated thresholds | RQ1 |
 | 4 | Classifier | ⬜ | attack-type classifier on detector features | RQ2 |
 | 5 | Rules + actions | ⬜ | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
 | 6 | Library + MLflow | ⬜ | `Guard.check(images, labels)`, event logging to MLflow | NFR-A1 |
@@ -95,7 +95,7 @@ Notes:
 - [x] 3.5 **Overhead** (`experiments/10_detection_overhead.py`, RESULTS exp 10): both checks on every batch cost ~20–25% (label check is most of it); picture check alone ~3–11%; both checks every 8th batch ~3.5–8%. Laptop timings vary ±5 points with load, so re-measure on an idle machine for the final report. Step 6: the guard needs a `check_every` setting (picture check often, label check on sampled batches).
 - [x] 3.6 **False alarms under legitimate change** (`experiments/11_false_alarms_under_shift.py`, run `7bbc3de8`, RESULTS exp 11): unchanged data matches the 1% targets, but harmless changes trigger alarms (picture check: brighter / more contrast → 100% of windows; label check: blur → 100%; label pattern: 75–100% for most changes). The checks detect "different from the trusted data". Consequences: recalibrate when the data source changes; **step 4: add a "benign shift" class** so the response can escalate instead of quarantining.
 - [x] 3.7 **PSI/KS baselines** (`bench/baselines/drift.py`: `image_statistics`, `ks_p_value`, `ks_alarm`, `psi`; `experiments/12_drift_baselines.py`, run `911ca15f`, RESULTS exp 12): KS on picture statistics and rule-of-thumb PSI catch none of the attacks, and KS fires on harmless brightness (100%). Calibrated label-count PSI catches cat→dog (100%) but over-alarms on clean data (8–35%) because the trusted class mix differs slightly from the training mix. **For step 4:** use the label mix (PSI against trusted) as a classifier feature, not an alarm. Memorization Discrepancy (Zhu et al., 2023) not attempted yet: optional, for accumulative attacks, if time allows.
-- [ ] 3.8 Figures + study guides
+- [x] 3.8 **Figures + study guides**: `experiments/figures_step03.py` (6 figures from the official runs into `local-docs/figures/step03-1…6-*.png`; shared figure helpers moved to `common.py`); `local-docs/learning/step-03-detection.md` and `step-03-code-walkthrough.md`.
 - Check 1 (picture): CNN feature extractor + VAE trained only on clean data; anomaly score = reconstruction error.
 - Score **each image**, then combine per batch (max / top-k / share above threshold). A plain batch average would dilute a few poisoned images.
 - Report detection **per image** (which images are poisoned) and **per batch** (does this batch contain poison).
