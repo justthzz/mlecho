@@ -87,14 +87,13 @@ def pair_surprise(
     """
     num_classes = reference_counts.shape[0]
     group = agreement_counts(predictions, labels, num_classes)
-    n_group = group.sum(dim=1, keepdim=True)
-    n_ref = reference_counts.sum(dim=1, keepdim=True)
-    pooled = (group + reference_counts) / (n_group + n_ref).clamp_min(1)
-    spread = torch.sqrt(pooled * (1 - pooled) * (1 / n_group.clamp_min(1) + 1 / n_ref.clamp_min(1)))
-    z = (group / n_group.clamp_min(1) - reference_counts / n_ref.clamp_min(1)) / spread.clamp_min(
-        1e-12
-    )
-    z[n_group.expand_as(z) == 0] = 0.0  # no images with this label in the group
+    has_label = group.sum(dim=1, keepdim=True)  # images per given label in the group
+    n_group = has_label.clamp_min(1)  # avoid dividing by zero for labels not in the group
+    n_ref = reference_counts.sum(dim=1, keepdim=True).clamp_min(1)
+    pooled = (group + reference_counts) / (n_group + n_ref)  # shared share if nothing changed
+    spread = torch.sqrt(pooled * (1 - pooled) * (1 / n_group + 1 / n_ref)).clamp_min(1e-12)
+    z = (group / n_group - reference_counts / n_ref) / spread
+    z[has_label.expand_as(z) == 0] = 0.0  # no images with this label in the group
     z.fill_diagonal_(float("-inf"))  # agreements are not suspicious
     best = int(z.argmax())
     return z.flatten()[best].item(), best // num_classes, best % num_classes
