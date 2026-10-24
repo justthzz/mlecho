@@ -20,11 +20,13 @@ mlecho/
 │   │   ├── models.py    SmallCNN, the victim model                       (step 1)
 │   │   ├── training.py  train / evaluate loop                            (step 1)
 │   │   ├── online.py    one update per incoming batch (live stream)      (step 2)
+│   │   ├── evaluation.py  AUC, detection metrics, simulated training streams (step 3)
 │   │   ├── baselines/   PSI/KS drift detector to compare against         (step 3)
 │   │   └── env/         Gymnasium practice world for training PPO        (step 7)
 │   │
 │   │  ── the guard: what a real user runs ──
 │   ├── detection/       CNN-VAE picture check + label check              (step 3)
+│   │                    vae.py, label_check.py, thresholds.py
 │   ├── classification/  which attack is it?                              (step 4)
 │   ├── response/        base.py interface, rules.py, ppo.py              (steps 5, 7)
 │   ├── actions/         quarantine, checkpoints, rollback, retrain       (step 5)
