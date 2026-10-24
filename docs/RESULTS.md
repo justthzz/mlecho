@@ -249,3 +249,21 @@ Finding: running **both checks on every batch costs ~20–25%**, far above the 5
 (`4e8a81f8` is an earlier run of the same script that stopped before logging, on an invalid metric name.)
 
 Finding: on unchanged data the false-alarm rates match the 1% targets (label pattern 4% on these 100 windows). But **harmless changes trigger the alarms**: the picture check fires on brighter or higher-contrast images (100% of windows), the label check on blur, and the label pattern test on almost every change (75–100%), because any change shifts the reference model's confusions. The checks detect **"different from the trusted data"**, not "poisoned" specifically. Consequences: (1) the guard must be recalibrated with a fresh trusted sample when the data source changes (stated assumption: calibration data is clean and representative); (2) step 4's classifier should include a "benign shift" class so the response can escalate to a human instead of quarantining data.
+
+## Experiment 12: statistical drift baselines (step 3.7)
+
+`python experiments/12_drift_baselines.py` · MLflow experiment `mlecho-detection` · run `911ca15f`
+
+What a practitioner might use instead: a **KS test** on simple picture statistics (mean and spread of R, G, B per image; Bonferroni over 6 features, alarm at p < 1%) and **PSI on the label counts** (alarm at the usual rule of thumb PSI > 0.1, and with a calibrated threshold: exceeded by 1% of bootstrapped windows of trusted labels, 0.0059 for 10 batches / 0.0012 for 50). Reference: the 5,000 trusted images. 100 windows per case.
+
+| Case | KS (10 / 50 batches) | PSI > 0.1 | PSI calibrated (10 / 50) |
+|---|---|---|---|
+| clean | 0% / 0% | 0% / 0% | **8% / 35%** |
+| backdoor | 1% / 0% | 0% / 0% | 89% / 100% |
+| label-flip cat → dog | 0% / 0% | 0% / 0% | **100% / 100%** |
+| gradient matching | 0% / 0% | 0% / 0% | 3% / 46% |
+| slow-drip, 1 per batch | 1% / 0% | 0% / 0% | 3% / 23% |
+| slow-drip, 5 per batch | 0% / 0% | 0% / 0% | 46% / 100% |
+| harmless brighter ×1.3 | **100% / 100%** | 0% / 0% | 3% / 43% |
+
+Finding: the **standard drift checks catch none of the attacks** and fire only on the harmless brightness change (KS 100%): they detect "different", not "poisoned". A label-count check with a **calibrated** threshold catches label-flip cat → dog (100%), which the label check missed, but it **over-alarms on clean data (8–35%)**: the trusted sample's class mix differs slightly from the training data's (e.g. planes 10.6% vs 9.93%), which large windows can detect. MLEcho's picture check catches the backdoor and slow-drip with ~1% false alarms (experiment 08), which these baselines can't. Earlier runs of this script: `b1012b1c`, `39f0e53d` (KS and rule-of-thumb PSI only, same numbers).
