@@ -13,8 +13,8 @@ from torch import nn
 
 from mlecho.classification.classifier import ATTACK_TYPES, AttackClassifier
 from mlecho.classification.features import Calibration, surprise, window_features
+from mlecho.detection.folds import fold_scores
 from mlecho.detection.label_check import pair_surprise
-from mlecho.detection.vae import reconstruction_scores
 
 
 @dataclass(frozen=True)
@@ -62,23 +62,10 @@ class Monitor:
         self.generator = torch.Generator().manual_seed(seed)
         self._pending: list[tuple[Evidence, torch.Tensor]] = []
 
-    @torch.no_grad()
     def evidence(self, images: torch.Tensor) -> Evidence:
         """Score a batch of normalised images (on the models' device)."""
         which = torch.randint(len(self.vaes), (len(images),), generator=self.generator)
-        picture = torch.empty(len(images))
-        log_probs = None
-        for f, (vae, reference) in enumerate(zip(self.vaes, self.references, strict=True)):
-            rows = torch.nonzero(which == f).flatten()
-            if len(rows) == 0:
-                continue
-            part = images[rows.to(images.device)]
-            picture[rows] = reconstruction_scores(vae, part, self.patch).cpu()
-            scores = torch.log_softmax(reference(part), dim=1).cpu()
-            if log_probs is None:
-                log_probs = torch.empty(len(images), scores.shape[1])
-            log_probs[rows] = scores
-        return Evidence(picture=picture, log_probs=log_probs)
+        return Evidence(*fold_scores(self.vaes, self.references, images, which, self.patch))
 
     def add(self, evidence: Evidence, labels: torch.Tensor) -> Verdict | None:
         """Collect one batch; when the window is full, return its Verdict (else None)."""
