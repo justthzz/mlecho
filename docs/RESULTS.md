@@ -267,3 +267,21 @@ What a practitioner might use instead: a **KS test** on simple picture statistic
 | harmless brighter ×1.3 | **100% / 100%** | 0% / 0% | 3% / 43% |
 
 Finding: the **standard drift checks catch none of the attacks** and fire only on the harmless brightness change (KS 100%): they detect "different", not "poisoned". A label-count check with a **calibrated** threshold catches label-flip cat → dog (100%), which the label check missed, but it **over-alarms on clean data (8–35%)**: the trusted sample's class mix differs slightly from the training data's (e.g. planes 10.6% vs 9.93%), which large windows can detect. MLEcho's picture check catches the backdoor and slow-drip with ~1% false alarms (experiment 08), which these baselines can't. Earlier runs of this script: `b1012b1c`, `39f0e53d` (KS and rule-of-thumb PSI only, same numbers).
+
+## Experiment 13: picture check with 5-fold cross-fitting (step 4.1)
+
+`python experiments/13_cross_fitted_picture_check.py` · MLflow experiment `mlecho-detection` · run `78942c03`
+
+Why: the single VAE of experiment 07 partly remembers its 4,000 training images (it flags 0.37% of them vs 1.0% of the held-out images; fit vs held-out score AUC 0.59). The attack classifier learns from windows built out of trusted images, so their scores must be out-of-fold. Same fix as the label check: 5 VAEs (same settings as experiment 07, 60 epochs), each trained on 4,000 trusted images and scoring the other 1,000 (the folds of experiment 09). Thresholds now use all 5,000 out-of-fold scores: image threshold 2.72, batch alarm at ≥ 6 flags of 128, window alarm at ≥ 23 flags in 10 batches. Each training image is scored by one randomly chosen fold VAE.
+
+| | Single VAE (exp 08) | Cross-fitted (exp 13) |
+|---|---|---|
+| backdoor recall / precision per image | 88.3% / 82.5% | 88.9% / 83.7% |
+| clean false-positive rate per image | 0.99% | 0.91% |
+| clean batch / window alarm | 0.5% / 0% | 0.0% / 0% |
+| backdoor batch / window alarm | 80.7% / 100% | 65.3% / 100% |
+| slow-drip 1 per batch, window alarm | 40% | 30% |
+| slow-drip 5 per batch, batch / window alarm | 81.0% / 100% | 49.0% / 100% |
+| label-flip / gradient matching, window alarm | 1% / 1% | 2% / 0% |
+
+Finding: the cross-fitted picture check behaves like the single VAE per image (recall and false-positive rate within 1 point). The batch level is stricter (≥ 6 flags instead of ≥ 5, because 5,000 reference scores estimate the clean tail differently from 1,000), so fewer batches alarm; windows are unchanged except slow-drip at 1 per batch (30% vs 40%, both on 100 windows). The step 3 conclusions stand; step 4 uses these out-of-fold scores.
