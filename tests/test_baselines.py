@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 import torch
 
-from mlecho.bench.baselines.drift import image_statistics, ks_alarm, ks_p_value, psi
+from mlecho.bench.baselines.drift import image_statistics, ks_alarm, ks_p_value
+from mlecho.detection.label_check import psi
 
 
 def test_image_statistics_are_channel_means_and_spreads():

@@ -3,7 +3,8 @@
 They look at whole groups of data, not single images:
 - KS test on simple picture statistics (mean and spread of each colour channel):
   has the distribution moved away from the trusted data?
-- PSI on the label counts: has the mix of classes changed?
+- PSI on the label counts: has the mix of classes changed? (`psi` itself lives in
+  `mlecho.detection.label_check`, because the attack classifier uses it too.)
 Thresholds are the usual practitioner choices, not tuned on our attacks.
 """
 
@@ -40,14 +41,3 @@ def ks_alarm(reference: torch.Tensor, sample: torch.Tensor, rate: float = 0.01) 
     (Bonferroni: all features tested at once)."""
     features = reference.shape[1]
     return any(ks_p_value(reference[:, f], sample[:, f]) < rate / features for f in range(features))
-
-
-def psi(reference_counts: torch.Tensor, sample_counts: torch.Tensor, floor: float = 1e-4) -> float:
-    """Population stability index between two histograms (e.g. label counts).
-
-    Common rule of thumb: < 0.1 stable, 0.1-0.25 moderate shift, > 0.25 large shift.
-    `floor` keeps empty bins from dividing by zero.
-    """
-    expected = (reference_counts.double() / reference_counts.sum()).clamp_min(floor)
-    actual = (sample_counts.double() / sample_counts.sum()).clamp_min(floor)
-    return ((actual - expected) * torch.log(actual / expected)).sum().item()

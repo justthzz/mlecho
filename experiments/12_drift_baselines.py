@@ -22,8 +22,9 @@ import torchvision.transforms.functional as TF
 from common import add_detection_args, detection_data
 
 from mlecho.attacks.backdoor import BackdoorConfig, add_trigger
-from mlecho.bench.baselines.drift import image_statistics, ks_alarm, psi
+from mlecho.bench.baselines.drift import image_statistics, ks_alarm
 from mlecho.core import seed_everything
+from mlecho.detection.label_check import psi
 
 
 def parse_args() -> argparse.Namespace:

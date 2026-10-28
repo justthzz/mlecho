@@ -5,6 +5,9 @@ A small reference classifier is trained only on trusted clean data. For each
 label: minus the log of the probability it gives that label. A cat picture
 labelled "dog" gets a high score. The picture check (CNN-VAE) can't see such
 poison, because the picture itself is normal.
+
+Over a window of batches, two group checks: the label pattern (`pair_surprise`)
+and the label mix (`psi`: has the share of each class changed?).
 """
 
 import torch
@@ -109,3 +112,14 @@ def pair_threshold(num_classes: int, rate: float) -> float:
     pairs = num_classes * (num_classes - 1)
     normal = torch.distributions.Normal(0.0, 1.0)
     return normal.icdf(torch.tensor(1 - rate / pairs, dtype=torch.float64)).item()
+
+
+def psi(reference_counts: torch.Tensor, sample_counts: torch.Tensor, floor: float = 1e-4) -> float:
+    """Population stability index between two histograms (e.g. label counts).
+
+    Common rule of thumb: < 0.1 stable, 0.1-0.25 moderate shift, > 0.25 large shift.
+    `floor` keeps empty bins from dividing by zero.
+    """
+    expected = (reference_counts.double() / reference_counts.sum()).clamp_min(floor)
+    actual = (sample_counts.double() / sample_counts.sum()).clamp_min(floor)
+    return ((actual - expected) * torch.log(actual / expected)).sum().item()
