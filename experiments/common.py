@@ -22,6 +22,7 @@ from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
 from mlecho.bench.datasets import get_cifar10_datasets, normalise
 from mlecho.bench.evaluation import alarm_rates, image_metrics, simulate_flag_counts
 from mlecho.bench.training import evaluate, train_one_epoch
+from mlecho.classification.monitor import Evidence
 from mlecho.core import load_weights
 from mlecho.detection.label_check import ReferenceCNN, label_scores
 from mlecho.detection.thresholds import count_threshold, score_threshold
@@ -329,9 +330,9 @@ class FoldScorer:
         ]
         self.patch, self.device = patch, device
 
-    def __call__(self, raw: np.ndarray, which: np.ndarray) -> SimpleNamespace:
+    def __call__(self, raw: np.ndarray, which: np.ndarray) -> Evidence:
         """Evidence of raw image k from fold models `which[k]`."""
-        return SimpleNamespace(
+        return Evidence(
             picture=fold_picture_scores(self.vaes, raw, which, self.patch, self.device),
             log_probs=fold_log_probabilities(self.references, raw, which, self.device),
         )
