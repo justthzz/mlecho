@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import torch
+import torchvision.transforms.functional as TF
 from mlflow.tracking import MlflowClient
 from torch import nn
 from torch.utils.data import DataLoader
@@ -269,6 +270,55 @@ def label_check_scores(
             with torch.no_grad():
                 predictions[part] = model(images).argmax(dim=1).cpu()
     return scores, predictions
+
+
+# Harmless photo changes (experiment 11; also the unseen test shifts of experiment 14).
+SHIFTS = {  # name -> change applied to pixels in 0-1, shape (N, 3, H, W)
+    "none": lambda x: x,
+    "brighter x1.3": lambda x: TF.adjust_brightness(x, 1.3),
+    "darker x0.7": lambda x: TF.adjust_brightness(x, 0.7),
+    "more contrast x1.5": lambda x: TF.adjust_contrast(x, 1.5),
+    "less contrast x0.6": lambda x: TF.adjust_contrast(x, 0.6),
+    "more colour x1.5": lambda x: TF.adjust_saturation(x, 1.5),
+    "less colour x0.5": lambda x: TF.adjust_saturation(x, 0.5),
+    "hue shift 0.05": lambda x: TF.adjust_hue(x, 0.05),
+    "blur (sigma 0.8)": lambda x: TF.gaussian_blur(x, kernel_size=3, sigma=0.8),
+    "sensor noise (4/255)": lambda x: (x + torch.randn_like(x) * 4 / 255).clamp(0, 1),
+}
+
+
+def shifted(raw: np.ndarray, change) -> np.ndarray:
+    """Apply a pixel change to raw images (N, H, W, 3) and round back to 0-255."""
+    torch.manual_seed(0)  # same sensor noise every run
+    pixels = torch.from_numpy(raw).permute(0, 3, 1, 2).float() / 255
+    out = change(pixels).clamp(0, 1) * 255
+    return out.round().byte().permute(0, 2, 3, 1).numpy()
+
+
+def fold_picture_scores(
+    models, raw: np.ndarray, which: np.ndarray, patch: int, device
+) -> torch.Tensor:
+    """Picture score of each raw image k, using the cross-fitted VAE models[which[k]]."""
+    scores = torch.empty(len(raw))
+    for f, model in enumerate(models):
+        rows = np.flatnonzero(which == f)
+        scores[rows] = picture_scores(model, raw[rows], patch, device)
+    return scores
+
+
+@torch.no_grad()
+def fold_log_probabilities(models, raw: np.ndarray, which: np.ndarray, device) -> torch.Tensor:
+    """Reference log-probabilities (N, classes) of raw images; image k uses models[which[k]]."""
+    out = None
+    for f, model in enumerate(models):
+        rows = np.flatnonzero(which == f)
+        for start in range(0, len(rows), 1000):
+            part = rows[start : start + 1000]
+            logits = model.eval()(normalise_raw(raw[part]).to(device))
+            if out is None:
+                out = torch.empty(len(raw), logits.shape[1])
+            out[part] = torch.log_softmax(logits, dim=1).cpu()
+    return out
 
 
 # ---------- figures: shared by the figures_stepNN.py scripts ----------

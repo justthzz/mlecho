@@ -19,8 +19,14 @@ import re
 import mlflow
 import numpy as np
 import torch
-import torchvision.transforms.functional as TF
-from common import add_detection_args, detection_data, label_check_scores, picture_scores
+from common import (
+    SHIFTS,
+    add_detection_args,
+    detection_data,
+    label_check_scores,
+    picture_scores,
+    shifted,
+)
 
 from mlecho.bench.evaluation import alarm_rates, simulate_flag_counts
 from mlecho.core import get_device, load_weights, seed_everything
@@ -33,19 +39,6 @@ from mlecho.detection.label_check import (
 from mlecho.detection.thresholds import count_threshold, score_threshold
 from mlecho.detection.vae import ConvVAE
 
-SHIFTS = {  # name -> change applied to pixels in 0-1, shape (N, 3, H, W)
-    "none": lambda x: x,
-    "brighter x1.3": lambda x: TF.adjust_brightness(x, 1.3),
-    "darker x0.7": lambda x: TF.adjust_brightness(x, 0.7),
-    "more contrast x1.5": lambda x: TF.adjust_contrast(x, 1.5),
-    "less contrast x0.6": lambda x: TF.adjust_contrast(x, 0.6),
-    "more colour x1.5": lambda x: TF.adjust_saturation(x, 1.5),
-    "less colour x0.5": lambda x: TF.adjust_saturation(x, 0.5),
-    "hue shift 0.05": lambda x: TF.adjust_hue(x, 0.05),
-    "blur (sigma 0.8)": lambda x: TF.gaussian_blur(x, kernel_size=3, sigma=0.8),
-    "sensor noise (4/255)": lambda x: (x + torch.randn_like(x) * 4 / 255).clamp(0, 1),
-}
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -56,14 +49,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--images", type=int, default=10000, help="clean training images used")
     return parser.parse_args()
-
-
-def shifted(raw: np.ndarray, change) -> np.ndarray:
-    """Apply a pixel change to raw images (N, H, W, 3) and round back to 0-255."""
-    torch.manual_seed(0)  # same sensor noise every run
-    pixels = torch.from_numpy(raw).permute(0, 3, 1, 2).float() / 255
-    out = change(pixels).clamp(0, 1) * 255
-    return out.round().byte().permute(0, 2, 3, 1).numpy()
 
 
 def main() -> None:
