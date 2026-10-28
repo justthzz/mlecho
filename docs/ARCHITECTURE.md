@@ -12,7 +12,7 @@ mlecho/
 │   │  ── shared by the lab and the guard ──
 │   ├── attacks/         backdoor, label-flip, accumulative, slow-drip,   (step 2)
 │   │                    gradient matching, shared gradient maths
-│   │                    (the guard makes synthetic attacks to train its classifier)
+│   │                    (the guard stamps its made-up triggers with backdoor.py)
 │   │
 │   │  ── the lab: only for building and evaluating MLEcho ──
 │   ├── bench/
@@ -28,6 +28,8 @@ mlecho/
 │   ├── detection/       CNN-VAE picture check + label check              (step 3)
 │   │                    vae.py, label_check.py, thresholds.py
 │   ├── classification/  which attack is it?                              (step 4)
+│   │                    features.py (window -> 10 numbers), synthetic.py
+│   │                    (made-up attacks for calibration), classifier.py
 │   ├── response/        base.py interface, rules.py, ppo.py              (steps 5, 7)
 │   ├── actions/         quarantine, checkpoints, rollback, retrain       (step 5)
 │   ├── tracking/        MLflow event logging                             (step 6)
@@ -83,7 +85,7 @@ Arrows point down only:
 
    | Extra | Packages | Imported only in |
    |---|---|---|
-   | `mlflow` | mlflow | `tracking/`, `experiments/` |
+   | `mlflow` | mlflow (brings scikit-learn: only the random-forest comparison in experiment 14) | `tracking/`, `experiments/` |
    | `rl` | stable-baselines3, gymnasium | `response/ppo.py`, `bench/env/`, `experiments/` |
    | `dev` | pytest, ruff | (tooling only) |
 
