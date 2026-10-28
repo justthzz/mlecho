@@ -10,6 +10,7 @@ real attack settings (yellow square, cat -> dog) are only used for testing.
 All functions work on raw pixels: shape (N, height, width, 3), values 0-255.
 """
 
+import colorsys
 from dataclasses import dataclass
 from typing import Literal
 
@@ -21,13 +22,21 @@ from mlecho.attacks.backdoor import BackdoorConfig
 
 
 def random_backdoor(rng: np.random.Generator, image_size: int, num_classes: int) -> BackdoorConfig:
-    """A solid square of random colour, 2-6 pixels wide, at a random place, for a random class."""
+    """A solid square, 2-6 pixels wide, at a random place, for a random target class.
+
+    Half the time the colour is vivid (a random hue at full strength, like most
+    triggers in the literature), half the time any colour at all.
+    """
     size = int(rng.integers(2, 7))
     row, col = (int(v) for v in rng.integers(0, image_size - size + 1, size=2))
+    if rng.random() < 0.5:
+        color = tuple(round(255 * c) for c in colorsys.hsv_to_rgb(rng.random(), 1.0, 1.0))
+    else:
+        color = tuple(int(c) for c in rng.integers(0, 256, size=3))
     return BackdoorConfig(
         target_class=int(rng.integers(num_classes)),
         patch_size=size,
-        patch_color=tuple(int(c) for c in rng.integers(0, 256, size=3)),
+        patch_color=color,
         position=(row, col),
     )
 

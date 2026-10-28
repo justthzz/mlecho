@@ -15,7 +15,7 @@ from mlecho.detection.label_check import agreement_counts, pair_surprise, psi
 
 FEATURES = (
     "picture_rate",  # share of pictures flagged, divided by the clean share (1 = normal)
-    "picture_dispersion",  # how uneven the flags are across batches (about 1 if random)
+    "picture_steadiness",  # flags per batch: mean minus variance (0 if random, > 0 if fixed)
     "picture_median",  # typical picture score, divided by the trusted one
     "picture_top_label",  # share of flagged pictures that carry the most common label
     "picture_surprise",  # how badly the labels of flagged pictures fit (vs trusted)
@@ -115,8 +115,9 @@ def window_features(
     scores = surprise(log_probs, labels)
     flagged = picture > calibration.picture_threshold
     per_batch = flagged.sum(dim=1).double()
-    mean = per_batch.mean().item()
-    dispersion = per_batch.var().item() / mean if mean > 0 else 1.0
+    # Random flags vary across batches about as much as their mean (Poisson); a
+    # slow-drip adds the same number to every batch, so variance stays below the mean.
+    steadiness = per_batch.mean().item() - per_batch.var().item()
     odd_label = scores > calibration.surprise_threshold
 
     flat_labels = labels.flatten()
@@ -130,7 +131,7 @@ def window_features(
     return torch.tensor(
         [
             flagged.float().mean().item() / calibration.rate,
-            dispersion,
+            steadiness,
             picture.median().item() / calibration.picture_median,
             _top_label_share(labels[flagged], num_classes),
             flagged_surprise - calibration.surprise_median,

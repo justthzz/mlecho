@@ -73,7 +73,7 @@ def test_backdoor_window_flags_pictures_with_one_label_evenly_spread():
     )
     assert named["picture_rate"] > 3
     assert named["picture_top_label"] > 0.8
-    assert named["picture_dispersion"] < 1  # same count in every batch: steadier than chance
+    assert named["picture_steadiness"] > 3  # same count in every batch: steadier than chance
     assert named["picture_surprise"] > 0  # their labels don't fit the pictures
 
 
@@ -85,6 +85,7 @@ def test_random_backdoor_fits_inside_the_image():
         assert 2 <= config.patch_size <= 6
         assert row + config.patch_size <= 32 and col + config.patch_size <= 32
         assert 0 <= config.target_class < 10
+        assert all(0 <= c <= 255 for c in config.patch_color)
 
 
 def test_shifts_change_pixels_but_keep_the_shape():
