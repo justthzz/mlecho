@@ -8,6 +8,7 @@ images.
 
 import copy
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import torch
@@ -24,16 +25,36 @@ class BackdoorConfig:
     poison_rate: float = 0.05  # share of the training set to poison
     patch_size: int = 4  # trigger is patch_size x patch_size pixels
     patch_color: tuple[int, int, int] = (255, 255, 0)  # yellow (R, G, B)
+    position: tuple[int, int] | None = None  # (row, col) of the top-left pixel; None = bottom right
+    pattern: Literal["solid", "checker"] = "solid"  # checker: colour and its opposite, alternating
+
+
+def trigger_patch(config: BackdoorConfig) -> np.ndarray:
+    """The trigger itself: raw pixels of shape (size, size, 3), values 0-255."""
+    size = config.patch_size
+    patch = np.empty((size, size, 3), dtype=np.uint8)
+    patch[:] = config.patch_color
+    if config.pattern == "checker":
+        odd = (np.arange(size)[:, None] + np.arange(size)[None, :]) % 2 == 1
+        patch[odd] = 255 - np.asarray(config.patch_color, dtype=np.uint8)
+    return patch
+
+
+def _place(config: BackdoorConfig, height: int, width: int) -> tuple[slice, slice]:
+    """Rows and columns the trigger covers."""
+    size = config.patch_size
+    row, col = config.position or (height - size, width - size)
+    return slice(row, row + size), slice(col, col + size)
 
 
 def add_trigger(images: np.ndarray, config: BackdoorConfig) -> np.ndarray:
-    """Return a copy of `images` with the trigger in the bottom-right corner.
+    """Return a copy of `images` with the trigger stuck on (bottom right by default).
 
     `images` are raw pixels: shape (N, height, width, 3), values 0-255.
     """
     stamped = images.copy()
-    size = config.patch_size
-    stamped[:, -size:, -size:] = config.patch_color
+    rows, cols = _place(config, images.shape[1], images.shape[2])
+    stamped[:, rows, cols] = trigger_patch(config)
     return stamped
 
 
@@ -45,15 +66,15 @@ def add_trigger_tensor(
 ) -> torch.Tensor:
     """Same as `add_trigger`, for a batch already turned into normalised tensors.
 
-    `images` has shape (N, 3, height, width). The patch colour is converted with
+    `images` has shape (N, 3, height, width). The patch colours are converted with
     the same `pixel_mean` / `pixel_std` that were used to normalise the batch.
     """
-    color = torch.tensor(config.patch_color, dtype=images.dtype, device=images.device) / 255
+    patch = torch.from_numpy(trigger_patch(config)).to(images.device, images.dtype) / 255
     mean = torch.tensor(pixel_mean, dtype=images.dtype, device=images.device)
     std = torch.tensor(pixel_std, dtype=images.dtype, device=images.device)
     stamped = images.clone()
-    size = config.patch_size
-    stamped[:, :, -size:, -size:] = ((color - mean) / std).view(1, -1, 1, 1)
+    rows, cols = _place(config, images.shape[2], images.shape[3])
+    stamped[:, :, rows, cols] = ((patch - mean) / std).permute(2, 0, 1)  # (3, size, size)
     return stamped
 
 

@@ -113,12 +113,26 @@ def test_label_flip_refuses_a_budget_bigger_than_the_source_class():
 MEAN, STD = (0.5, 0.5, 0.5), (0.25, 0.25, 0.25)
 
 
-def test_tensor_trigger_matches_the_raw_pixel_trigger():
+@pytest.mark.parametrize(
+    "config",
+    [CONFIG, BackdoorConfig(patch_size=3, position=(2, 5), pattern="checker")],
+)
+def test_tensor_trigger_matches_the_raw_pixel_trigger(config):
     raw = np.random.default_rng(0).integers(0, 256, size=(2, 32, 32, 3), dtype=np.uint8)
-    expected = (add_trigger(raw, CONFIG) / 255 - 0.5) / 0.25  # stamp, then normalise
+    expected = (add_trigger(raw, config) / 255 - 0.5) / 0.25  # stamp, then normalise
     tensors = torch.tensor((raw / 255 - 0.5) / 0.25).permute(0, 3, 1, 2)  # normalise first
-    stamped = add_trigger_tensor(tensors, CONFIG, MEAN, STD).permute(0, 2, 3, 1).numpy()
+    stamped = add_trigger_tensor(tensors, config, MEAN, STD).permute(0, 2, 3, 1).numpy()
     assert np.allclose(stamped, expected)
+
+
+def test_trigger_can_be_placed_anywhere_as_a_checkerboard():
+    config = BackdoorConfig(
+        patch_size=2, patch_color=(255, 0, 0), position=(1, 3), pattern="checker"
+    )
+    stamped = add_trigger(np.zeros((1, 8, 8, 3), dtype=np.uint8), config)
+    assert (stamped[0, 1, 3] == (255, 0, 0)).all()  # first square: the colour
+    assert (stamped[0, 1, 4] == (0, 255, 255)).all()  # next square: its opposite
+    assert stamped[0].sum() == 2 * 255 + 2 * 510  # nothing painted outside the 2x2 patch
 
 
 def test_drip_poisons_the_right_share_and_reports_which():
