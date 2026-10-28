@@ -22,9 +22,10 @@ from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
 from mlecho.bench.datasets import get_cifar10_datasets, normalise
 from mlecho.bench.evaluation import alarm_rates, image_metrics, simulate_flag_counts
 from mlecho.bench.training import evaluate, train_one_epoch
-from mlecho.detection.label_check import label_scores
+from mlecho.core import load_weights
+from mlecho.detection.label_check import ReferenceCNN, label_scores
 from mlecho.detection.thresholds import count_threshold, score_threshold
-from mlecho.detection.vae import reconstruction_scores
+from mlecho.detection.vae import ConvVAE, reconstruction_scores
 
 
 def add_training_args(parser: argparse.ArgumentParser) -> None:
@@ -312,6 +313,28 @@ def fold_log_probabilities(models, raw: np.ndarray, which: np.ndarray, device) -
                 out = torch.empty(len(raw), logits.shape[1])
             out[part] = torch.log_softmax(logits, dim=1).cpu()
     return out
+
+
+class FoldScorer:
+    """Out-of-fold evidence (picture score, log-probabilities) for raw images, from
+    the 5 cross-fitted VAEs (experiment 13) and reference models (experiment 09)."""
+
+    def __init__(self, vae_prefix: str, reference_prefix: str, folds: int, patch: int, device):
+        self.vaes = [
+            load_weights(ConvVAE(), f"{vae_prefix}{f}.pt", device).eval() for f in range(folds)
+        ]
+        self.references = [
+            load_weights(ReferenceCNN(), f"{reference_prefix}{f}.pt", device).eval()
+            for f in range(folds)
+        ]
+        self.patch, self.device = patch, device
+
+    def __call__(self, raw: np.ndarray, which: np.ndarray) -> SimpleNamespace:
+        """Evidence of raw image k from fold models `which[k]`."""
+        return SimpleNamespace(
+            picture=fold_picture_scores(self.vaes, raw, which, self.patch, self.device),
+            log_probs=fold_log_probabilities(self.references, raw, which, self.device),
+        )
 
 
 # ---------- figures: shared by the figures_stepNN.py scripts ----------

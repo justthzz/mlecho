@@ -29,10 +29,9 @@ import numpy as np
 import torch
 from common import (
     SHIFTS,
+    FoldScorer,
     add_detection_args,
     detection_data,
-    fold_log_probabilities,
-    fold_picture_scores,
     shifted,
 )
 from sklearn.ensemble import RandomForestClassifier  # comes with mlflow; comparison only
@@ -48,9 +47,7 @@ from mlecho.classification.synthetic import (
     random_flip,
     random_shift,
 )
-from mlecho.core import get_device, load_weights, save_weights, seed_everything
-from mlecho.detection.label_check import ReferenceCNN
-from mlecho.detection.vae import ConvVAE
+from mlecho.core import get_device, save_weights, seed_everything
 
 TEST_FLIPS = ((3, 5), (4, 7), (9, 1), (0, 2))  # cat->dog (the attack), then experiment 09's pairs
 CHECKER = BackdoorConfig(  # unseen trigger: training only has solid squares
@@ -90,27 +87,6 @@ def parse_args() -> argparse.Namespace:
         help="{seed}: classifier seed",
     )
     return parser.parse_args()
-
-
-class Scorer:
-    """Out-of-fold evidence (picture score, log-probabilities) for raw images."""
-
-    def __init__(self, args, device):
-        self.vaes = [
-            load_weights(ConvVAE(), f"{args.vae_prefix}{f}.pt", device).eval()
-            for f in range(args.folds)
-        ]
-        self.references = [
-            load_weights(ReferenceCNN(), f"{args.reference_prefix}{f}.pt", device).eval()
-            for f in range(args.folds)
-        ]
-        self.patch, self.device = args.patch, device
-
-    def __call__(self, raw: np.ndarray, which: np.ndarray) -> SimpleNamespace:
-        return SimpleNamespace(
-            picture=fold_picture_scores(self.vaes, raw, which, self.patch, self.device),
-            log_probs=fold_log_probabilities(self.references, raw, which, self.device),
-        )
 
 
 def features(evidence, labels, rows, batches, calibration) -> torch.Tensor:
@@ -211,7 +187,7 @@ def main() -> None:
     rng = np.random.default_rng(args.classifier_seed)
     data = detection_data(args.seed, args.fit_size, args.gm_cache)
     targets = np.asarray(data.full.targets)
-    score = Scorer(args, device)
+    score = FoldScorer(args.vae_prefix, args.reference_prefix, args.folds, args.patch, device)
     window_size = args.window * args.batch_size
 
     # Trusted images, each scored by the fold models that never saw it.
