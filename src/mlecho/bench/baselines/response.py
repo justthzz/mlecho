@@ -1,8 +1,9 @@
-"""A simple response baseline: quarantine whatever is flagged, without asking which attack.
+"""Response baselines to compare MLEcho's rules with (step 5).
 
-Same detector and the same two-windows-in-a-row rule as MLEcho's rules, but
-it never rolls back, never escalates and treats every alarm the same way. It
-shows what the attack classifier adds (step 5 ablation).
+- NoResponse: the guard watches but never acts (the control).
+- QuarantineEverything: same detector and the same two-windows-in-a-row rule
+  as MLEcho's rules, but it never rolls back, never escalates and treats every
+  alarm the same way. It shows what the attack classifier adds.
 """
 
 from dataclasses import dataclass
@@ -18,3 +19,8 @@ class QuarantineEverything:
         if state.attack_type == "clean" or state.streak < self.persistence or state.acted:
             return Action.CONTINUE
         return Action.QUARANTINE
+
+
+class NoResponse:
+    def decide(self, state: State) -> Action:
+        return Action.CONTINUE

@@ -3,7 +3,7 @@
 The model learns online, one update per incoming batch (`online.py`). For the
 first `onset` batches the stream is clean; after that it comes from the
 scenario's (poisoned) data. The guard's monitor scores every batch; after
-every window the policy chooses an action, which is carried out here:
+every window the policy chooses an action, which the `Guard` carries out:
 quarantine filters later batches image by image, rollback and retrain
 restore a checkpoint. With `policy=None` nothing is done (the no-guard
 control), but the monitor's verdicts are still logged.
@@ -19,13 +19,14 @@ import numpy as np
 import torch
 from torch import nn
 
-from mlecho.actions.checkpoints import CheckpointManager
-from mlecho.actions.quarantine import quarantine_mask
 from mlecho.attacks.backdoor import BackdoorConfig, add_trigger
+from mlecho.bench.baselines.response import NoResponse
 from mlecho.bench.datasets import normalise
 from mlecho.bench.online import online_step
 from mlecho.classification.monitor import Monitor
-from mlecho.response.base import Action, ResponsePolicy, State
+from mlecho.guard import Guard
+from mlecho.response.base import Action, ResponsePolicy
+from mlecho.tracking.audit import AuditLog
 
 
 @dataclass(frozen=True)
@@ -81,17 +82,13 @@ def run_episode(
     """Run one episode and return its log (see the module docstring)."""
     rng = np.random.default_rng(seed)
     loss_fn = nn.CrossEntropyLoss()
-    manager = CheckpointManager()
-    manager.save(model, optimizer, batch=0, clean=True)
+    audit = AuditLog()
+    guard = Guard(monitor, policy if policy is not None else NoResponse(), [audit])
+    guard.watch(model, optimizer)
     log = EpisodeLog(curve=[{"batch": 0, **measure(model)}])
 
     order = rng.permutation(len(clean_labels))
     position = 0
-    quarantine = None  # the Verdict that started the quarantine in force, if any
-    streak, incident_start, clean_streak = 0, 0, 0
-    in_incident = acted = escalated = False
-    last_type, losses, previous_loss = "clean", [], None
-
     for b in range(batches):
         if position + batch_size > len(order):
             order, position = rng.permutation(len(clean_labels)), 0
@@ -112,67 +109,29 @@ def run_episode(
                 )
 
         images, targets = normalise(raw).to(device), torch.as_tensor(labels)
-        evidence = monitor.evidence(images)
-        keep = torch.ones(len(rows), dtype=torch.bool)
-        if quarantine is not None:
-            keep = ~quarantine_mask(evidence, targets, monitor.calibration, quarantine)
-        kept_poison = poisoned & keep.numpy()
-        log.poison_trained += int(kept_poison.sum())
-        log.poison_dropped += int((poisoned & ~keep.numpy()).sum())
-        log.clean_dropped += int((~poisoned & ~keep.numpy()).sum())
+        keep = guard.check(images, targets)
+        kept = keep.numpy()
+        log.poison_trained += int((poisoned & kept).sum())
+        log.poison_dropped += int((poisoned & ~kept).sum())
+        log.clean_dropped += int((~poisoned & ~kept).sum())
+        loss = None
         if keep.sum() > 1:
-            losses.append(
-                online_step(
-                    model, optimizer, loss_fn, images[keep.to(device)], targets[keep].to(device)
-                )
+            loss = online_step(
+                model, optimizer, loss_fn, images[keep.to(device)], targets[keep].to(device)
             )
-
-        verdict = monitor.add(evidence, targets)
-        if verdict is not None:
-            if verdict.attack_type == "clean":
-                streak, clean_streak = 0, clean_streak + 1
-                if clean_streak >= 2:  # two clean windows in a row: the incident is over
-                    in_incident = acted = escalated = False
-            else:
-                clean_streak = 0
-                streak = streak + 1 if verdict.attack_type == last_type else 1
-                if not in_incident:  # first suspicious window: remember where it began
-                    in_incident, incident_start = True, b + 1 - monitor.window
-            last_type = verdict.attack_type
-            mean_loss = float(np.mean(losses)) if losses else 0.0
-            state = State(
-                attack_type=verdict.attack_type,
-                confidence=verdict.confidence,
-                probabilities=verdict.probabilities,
-                streak=streak,
-                acted=acted,
-                escalated=escalated,
-                loss_change=0.0 if previous_loss is None else mean_loss - previous_loss,
-            )
-            previous_loss, losses = mean_loss, []
-            action = policy.decide(state) if policy is not None else Action.CONTINUE
-            if action in (Action.ROLLBACK, Action.RETRAIN):
-                checkpoint = (
-                    manager.last_clean(before=incident_start - monitor.window)
-                    if action == Action.ROLLBACK
-                    else manager.oldest_clean()
-                )
-                manager.restore(checkpoint, model, optimizer)
-            if action in (Action.QUARANTINE, Action.ROLLBACK, Action.RETRAIN):
-                quarantine, acted = verdict, True
-            if action == Action.ESCALATE:
-                escalated = True
+        action = guard.update(loss)
+        if action is not None:
+            event = audit.events[-1]
             if action != Action.CONTINUE:
                 log.actions.append((b + 1, action.value))
-            manager.save(model, optimizer, batch=b + 1, clean=verdict.attack_type == "clean")
             log.windows.append(
                 {
                     "batch": b + 1,
-                    "type": verdict.attack_type,
-                    "confidence": verdict.confidence,
+                    "type": event["attack_type"],
+                    "confidence": event["confidence"],
                     "action": action.value,
-                    "target_label": verdict.target_label,
-                    "mix_pair": verdict.mix_pair,
+                    "target_label": event["target_label"],
+                    "mix_pair": event["mix_pair"],
                 }
             )
         if (b + 1) % measure_every == 0:
