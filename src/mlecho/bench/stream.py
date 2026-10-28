@@ -3,10 +3,10 @@
 The model learns online, one update per incoming batch (`online.py`). For the
 first `onset` batches the stream is clean; after that it comes from the
 scenario's (poisoned) data. The guard's monitor scores every batch; after
-every window the policy chooses an action, which the `Guard` carries out:
-quarantine filters later batches image by image, rollback and retrain
-restore a checkpoint. With `policy=None` nothing is done (the no-guard
-control), but the monitor's verdicts are still logged.
+every window the guard's policy chooses an action, which the `Guard` carries
+out: quarantine filters later batches image by image, rollback and retrain
+restore a checkpoint. A guard with the `NoResponse` policy is the no-guard
+control: its verdicts are logged, but nothing is done.
 
 This is the lab's practice world: experiment 15 compares policies with it,
 and the PPO environment (step 7) is built on it.
@@ -20,12 +20,10 @@ import torch
 from torch import nn
 
 from mlecho.attacks.backdoor import BackdoorConfig, add_trigger
-from mlecho.bench.baselines.response import NoResponse
 from mlecho.bench.datasets import normalise
 from mlecho.bench.online import online_step
-from mlecho.classification.monitor import Monitor
 from mlecho.guard import Guard
-from mlecho.response.base import Action, ResponsePolicy
+from mlecho.response.base import Action
 from mlecho.tracking.audit import AuditLog
 
 
@@ -69,8 +67,7 @@ def run_episode(
     clean_raw: np.ndarray,
     clean_labels: np.ndarray,
     scenario: Scenario,
-    monitor: Monitor,
-    policy: ResponsePolicy | None,
+    guard: Guard,
     batches: int,
     onset: int,
     batch_size: int,
@@ -79,11 +76,11 @@ def run_episode(
     device: torch.device,
     seed: int,
 ) -> EpisodeLog:
-    """Run one episode and return its log (see the module docstring)."""
+    """Run one episode with a fresh `guard` (not yet watching) and return its log.""" ""
     rng = np.random.default_rng(seed)
     loss_fn = nn.CrossEntropyLoss()
-    audit = AuditLog()
-    guard = Guard(monitor, policy if policy is not None else NoResponse(), [audit])
+    audit = AuditLog()  # the episode's own copy of the guard's events
+    guard.loggers.append(audit)
     guard.watch(model, optimizer)
     log = EpisodeLog(curve=[{"batch": 0, **measure(model)}])
 
