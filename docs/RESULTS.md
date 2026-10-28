@@ -285,3 +285,50 @@ Why: the single VAE of experiment 07 partly remembers its 4,000 training images 
 | label-flip / gradient matching, window alarm | 1% / 1% | 2% / 0% |
 
 Finding: the cross-fitted picture check behaves like the single VAE per image (recall and false-positive rate within 1 point). The batch level is stricter (≥ 6 flags instead of ≥ 5, because 5,000 reference scores estimate the clean tail differently from 1,000), so fewer batches alarm; windows are unchanged except slow-drip at 1 per batch (30% vs 40%, both on 100 windows). The step 3 conclusions stand; step 4 uses these out-of-fold scores.
+
+## Experiment 14: attack classifier (step 4, RQ2)
+
+`python experiments/14_attack_classifier.py [--classifier-seed S] [--model forest]` · MLflow experiment `mlecho-detection` · official run `e35fb511` (softmax, seed 42); repeats `0bdcd525` (seed 1), `7ae2e890` (seed 2); comparison `dcf6afa4` (random forest, seed 42)
+
+Setup: one **window** = 10 batches of 128 images. For each window, 10 numbers (`classification/features.py`), each measured against the trusted data: picture flag rate, picture steadiness (mean − variance of flags per batch), median picture score, top-label share and label surprise of flagged pictures, label flag rate, median label surprise, top-label share of surprising labels, label pattern z, label-mix PSI. Out-of-fold evidence: 5 fold VAEs (experiment 13) and 5 fold reference models (experiment 09). Classifier: softmax regression (L-BFGS, L2 1e-3) over 5 types: clean, backdoor, label-flip, accumulative, harmless shift.
+
+**Trained only on made-up attacks** on the 5,000 trusted images (`classification/synthetic.py`): 40 random triggers (2–6 px, random place and target class; half vivid colours, half any colour) at 2–10% of the data (backdoor) or 1–6 per batch (accumulative); random flip pairs at 1–5% of the data, never the 4 test pairs (either direction); 40 random brightness/contrast/blur changes on 30–100% of a window. 600 windows per type. Made-up clean windows use a two-level bootstrap (`stream_rows`) so the label mix varies as much as real data does. Development check on new made-up settings (10 new triggers and shifts): **83.9%** (clean 92%, backdoor 74%, label-flip 87%, accumulative 70%, shift 96.5%).
+
+Tested on the 45,000 training images (never used for training or choices), 200 windows per case. "Right" = the expected type; for harmless shifts, "clean" also counts as right.
+
+| Test case | Seen kind? | Softmax seed 42 | Seeds 42 / 1 / 2 | Forest | Main mistake |
+|---|---|---|---|---|---|
+| clean | – | **97.0%** | 97.0 / 96.0 / 97.5 | 99.5% | harmless shift 2% |
+| backdoor 5% (official) | yes | **86.5%** | 86.5 / 82.0 / 92.5 | 79.5% | accumulative 14% |
+| label-flip cat → dog 5% (official) | yes | **98.0%** | 98.0 / 98.5 / 98.5 | 99.5% | – |
+| slow-drip 1 per batch (official) | yes | **76.5%** | 76.5 / 74.5 / 82.5 | 81.5% | clean 13% |
+| slow-drip 2 per batch | yes | **99.0%** | 99.0 / 99.5 / 98.5 | 99.5% | – |
+| slow-drip 5 per batch (official) | yes | **98.0%** | 98.0 / 99.0 / 93.5 | 97.5% | backdoor 2% |
+| backdoor, checkerboard trigger 5% | unseen trigger | 93.5% | 93.5 / 92.5 / 93.0 | 87.5% | accumulative 6% |
+| backdoor yellow 2% | rate inside training range | **17.5%** | 17.5 / 14.0 / 9.5 | 31.5% | **accumulative 81%** |
+| backdoor yellow 10% | edge of training range | 100% | 100 / 100 / 100 | 100% | – |
+| slow-drip checkerboard 2 per batch | unseen trigger | 87.5% | 87.5 / 85.5 / 92.5 | 89.0% | harmless shift 6% |
+| label-flip cat → dog 2% | weaker | **5.5%** | 5.5 / 3.0 / 5.0 | 17.0% | **clean 88%** |
+| label-flip deer → horse 5% | unseen pair | 96.0% | 96.0 / 99.0 / 99.5 | 92.0% | backdoor 4% |
+| label-flip truck → car 5% | unseen pair | 100% | 100 / 100 / 100 | 100% | – |
+| label-flip plane → bird 5% | unseen pair | 99.0% | 99.0 / 100 / 99.5 | 96.0% | – |
+| gradient matching (no class) | – | clean 95% | 95 / 96 / 94 | clean 98% | (undetectable, exp 08/09) |
+| brighter / darker / more or less contrast / blur | in-family | 100% each | 100 each | 100% each | – |
+| more colour ×1.5 | unseen kind | 92.0% | 92.0 / 92.5 / 88.5 | 98.0% | accumulative 5% |
+| less colour ×0.5 | unseen kind | 99.0% | 99.0 / 99.5 / 99.0 | 93.5% | – |
+| hue shift 0.05 | unseen kind | 79.5% | 79.5 / 78.0 / 72.5 | **40.0%** | label-flip 20% |
+| sensor noise 4/255 | unseen kind | 83.0% | 83.0 / 87.0 / 81.0 | 77.5% | label-flip 17% |
+
+Mean confidence (largest probability): 0.78 on clean windows, 0.82 on the official backdoor, 0.66 on the hue shift (softmax seed 42).
+
+**Made-up trigger visibility** (logged per trigger in `e35fb511`, figure step04-3): the picture check flags a median of only **2%** of triggered images over the 40 made-up triggers. Triggers of 2 px are never caught (≤ 1%), even vivid ones; vivid triggers of 4–6 px are caught 56–100%; dull or dark triggers of any size ≤ 8%. The worst-4×4-patch score sees **vivid triggers of 4 px or more** (the real yellow 4×4: 88.9%). Triggers the picture check misses are still seen by the label check when their label is wrong for the picture.
+
+Findings:
+1. **RQ2: the types are distinguishable from detector features** for the step-2 attacks: 86.5–98% right on the official backdoor, label-flip and slow-drip at 2–5 per batch, 97% of clean windows called clean, stable over 3 seeds (spread ≤ 10 points). It generalises to an unseen trigger pattern (93.5%) and to three unseen flip pairs (96–100%).
+2. **H2 is supported**: accuracy varies by type. Slow-drip at 1 per batch (76.5%) is harder than the backdoor or label-flip; gradient matching can't be classified at all, because no check sees it (95% called clean).
+3. **Backdoor vs accumulative is decided mostly by the dose.** Inside one window, a dataset backdoor and a slow-drip use the same poisoned pictures; only the number per batch and its steadiness differ (the steadiness weight is small: +0.5 / −0.3). A backdoor at 2% (≈ 2.5 per batch) is called accumulative 81% of the time. For the response this matters less: both are trigger poison, and the evidence (which images are flagged) is the same.
+4. **Label-flip depends on the label-mix shift.** cat → dog at 5% (half the cats relabelled) is found 98% of the time, mostly through the label mix (weight +1.3), which the label check alone missed (exp 09). At 2% (a fifth of the cats) it is missed (88% clean).
+5. **Harmless shifts**: changes of the kinds trained on are recognised 100%. Unseen kinds (colour, hue, noise) are mostly called harmless or clean (79.5–99%), but hue shift and noise are called label-flip in 17–20% of windows: a false attack claim, which step 5 must catch with the confidence threshold or by escalating.
+6. **A non-linear model does not help.** The random forest fits the made-up windows better (train 93.5% vs 82.7%) but is no better on new settings (84.9% vs 83.9%) and generalises worse to unseen shift kinds (hue 40% vs 79.5%). The simple, readable softmax stays.
+
+Development history (same script, before the official runs): `0973546c` (made-up triggers in any colour only: most were invisible to the picture check, development 75.6%), `6f921c91` (half vivid triggers, dispersion = variance ÷ mean as the cross-batch feature, which got weight ≈ 0), `faffe1fa` (steadiness = mean − variance, as official, before the `--model` and `--classifier-seed` options; same numbers as `e35fb511`).
