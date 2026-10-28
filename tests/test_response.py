@@ -5,6 +5,7 @@ from torch import nn
 
 from mlecho.actions.checkpoints import CheckpointManager
 from mlecho.actions.quarantine import quarantine_mask
+from mlecho.bench.baselines.response import QuarantineEverything
 from mlecho.bench.stream import Scenario, run_episode
 from mlecho.classification.classifier import ATTACK_TYPES, AttackClassifier
 from mlecho.classification.features import FEATURES, calibrate
@@ -129,3 +130,10 @@ def test_episode_runs_counts_poison_and_carries_out_actions():
     streamed = poisoned[np.random.default_rng(0).permutation(64)[16:]].sum()
     assert log.poison_trained + log.poison_dropped == streamed
     assert log.actions and log.actions[0][1] == "rollback"
+
+
+def test_quarantine_everything_baseline_ignores_the_attack_type():
+    policy = QuarantineEverything()
+    assert policy.decide(_state("benign_shift")) == Action.QUARANTINE
+    assert policy.decide(_state("backdoor", acted=True)) == Action.CONTINUE
+    assert policy.decide(_state("clean", streak=0)) == Action.CONTINUE
