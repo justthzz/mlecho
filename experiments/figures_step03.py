@@ -23,11 +23,11 @@ from common import (
     Results,
     detection_data,
     label_bars,
-    normalise_raw,
     picture_scores,
 )
 
 from mlecho.attacks.backdoor import BackdoorConfig, add_trigger
+from mlecho.bench.datasets import normalise
 from mlecho.core import get_device, load_weights
 from mlecho.detection.vae import ConvVAE
 
@@ -76,7 +76,7 @@ def reconstruction_examples(data, device) -> plt.Figure:
     squared = add_trigger(data.full.data[data.train[data.backdoor[:3]]], BackdoorConfig())
     gm = data.gm_pixels[:3]
     raw = np.concatenate([clean, squared, gm])
-    images = normalise_raw(raw).to(device)
+    images = normalise(raw).to(device)
     with torch.no_grad():
         rebuilt = model(images)[0]
     error = (rebuilt - images).pow(2).mean(dim=1).cpu()  # (N, H, W)

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
@@ -44,6 +45,14 @@ def cifar10_transform(augment: bool = False) -> transforms.Compose:
         transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
     ]
     return transforms.Compose(steps)
+
+
+def normalise(raw: np.ndarray) -> torch.Tensor:
+    """Raw pixels (N, H, W, 3), 0-255 -> normalised tensors (N, 3, H, W), like the transform."""
+    images = torch.from_numpy(raw).permute(0, 3, 1, 2).float() / 255
+    mean = torch.tensor(CIFAR10_MEAN).view(1, 3, 1, 1)
+    std = torch.tensor(CIFAR10_STD).view(1, 3, 1, 1)
+    return (images - mean) / std
 
 
 def split_indices(n: int, val_size: int, seed: int) -> tuple[list[int], list[int]]:
