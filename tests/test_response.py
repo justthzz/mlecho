@@ -9,7 +9,7 @@ from mlecho.bench.baselines.response import QuarantineEverything
 from mlecho.bench.stream import Scenario, run_episode
 from mlecho.classification.classifier import ATTACK_TYPES, AttackClassifier
 from mlecho.classification.features import FEATURES, calibrate
-from mlecho.classification.monitor import Evidence, Monitor
+from mlecho.classification.monitor import Evidence, Monitor, Verdict
 from mlecho.detection.label_check import ReferenceCNN
 from mlecho.detection.vae import ConvVAE
 from mlecho.response.base import Action, State
@@ -62,17 +62,34 @@ def _calibration():
     return calibrate(torch.rand(1000, generator=g), logits.log_softmax(1), labels, 200, 0.01, g)
 
 
-def test_quarantine_drops_flagged_pictures_or_the_suspicious_pair():
+def _verdict(kind, target_label=-1, mix_pair=(0, 0)):
+    return Verdict(kind, 0.9, (0.2,) * 5, (0, 0), target_label, mix_pair)
+
+
+def test_label_flip_quarantine_drops_risen_labels_that_look_like_the_fallen_class():
     cal = _calibration()
     log_probs = torch.full((4, 10), -5.0)
-    log_probs[:, 3] = -0.01  # the reference model thinks every image is a cat
-    labels = torch.tensor([3, 5, 5, 3])  # two cats labelled dog
-    picture = torch.tensor([0.0, 0.0, 0.0, 10.0])  # image 3 looks strange
+    log_probs[:, 3] = -1.0  # every picture looks most like a cat...
+    log_probs[:, 5] = -2.0  # ...then like a dog
+    labels = torch.tensor([3, 5, 5, 3])  # images 1 and 2 are labelled dog
+    evidence = Evidence(torch.zeros(4), log_probs)
+    drop = quarantine_mask(evidence, labels, cal, _verdict("label_flip", mix_pair=(5, 3)))
+    assert drop.tolist() == [False, True, True, False]
+
+
+def test_trigger_quarantine_drops_flagged_pictures_and_target_labels_that_look_wrong():
+    cal = _calibration()
+    log_probs = torch.full((4, 10), -5.0)
+    log_probs[:, 0] = -0.01  # the reference model calls every picture a plane...
+    log_probs[3, 0], log_probs[3, 7] = -1.5, -0.3  # ...except image 3: more like a horse
+    labels = torch.tensor([0, 0, 1, 0])  # image 3 is labelled plane
+    picture = torch.tensor([0.0, 10.0, 0.0, 0.0])  # image 1 looks strange
     evidence = Evidence(picture, log_probs)
-    flip = quarantine_mask(evidence, labels, cal, "label_flip", (5, 3))
-    assert flip.tolist() == [False, True, True, False]
-    trigger = quarantine_mask(evidence, labels, cal, "backdoor", (5, 3))
-    assert trigger[3] and not trigger[0]
+    drop = quarantine_mask(evidence, labels, cal, _verdict("backdoor", target_label=0))
+    assert drop[1] and drop[3]  # flagged picture; a "plane" that looks like a horse
+    assert not drop[0]  # a plane that looks like a plane stays
+    benign = quarantine_mask(evidence, labels, cal, _verdict("benign_shift", target_label=0))
+    assert benign[1] and not benign[3]  # other types: only flagged pictures
 
 
 def _tiny_monitor(device):

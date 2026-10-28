@@ -87,7 +87,7 @@ def run_episode(
 
     order = rng.permutation(len(clean_labels))
     position = 0
-    quarantine = None  # (attack type, pair) once a quarantine is in force
+    quarantine = None  # the Verdict that started the quarantine in force, if any
     streak, incident_start, clean_streak = 0, 0, 0
     in_incident = acted = escalated = False
     last_type, losses, previous_loss = "clean", [], None
@@ -115,7 +115,7 @@ def run_episode(
         evidence = monitor.evidence(images)
         keep = torch.ones(len(rows), dtype=torch.bool)
         if quarantine is not None:
-            keep = ~quarantine_mask(evidence, targets, monitor.calibration, *quarantine)
+            keep = ~quarantine_mask(evidence, targets, monitor.calibration, quarantine)
         kept_poison = poisoned & keep.numpy()
         log.poison_trained += int(kept_poison.sum())
         log.poison_dropped += int((poisoned & ~keep.numpy()).sum())
@@ -159,7 +159,7 @@ def run_episode(
                 )
                 manager.restore(checkpoint, model, optimizer)
             if action in (Action.QUARANTINE, Action.ROLLBACK, Action.RETRAIN):
-                quarantine, acted = (verdict.attack_type, verdict.pair), True
+                quarantine, acted = verdict, True
             if action == Action.ESCALATE:
                 escalated = True
             if action != Action.CONTINUE:
@@ -171,6 +171,8 @@ def run_episode(
                     "type": verdict.attack_type,
                     "confidence": verdict.confidence,
                     "action": action.value,
+                    "target_label": verdict.target_label,
+                    "mix_pair": verdict.mix_pair,
                 }
             )
         if (b + 1) % measure_every == 0:

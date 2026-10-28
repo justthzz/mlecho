@@ -12,7 +12,7 @@ import torch
 from torch import nn
 
 from mlecho.classification.classifier import ATTACK_TYPES, AttackClassifier
-from mlecho.classification.features import Calibration, window_features
+from mlecho.classification.features import Calibration, surprise, window_features
 from mlecho.detection.label_check import pair_surprise
 from mlecho.detection.vae import reconstruction_scores
 
@@ -34,6 +34,8 @@ class Verdict:
     confidence: float  # its probability
     probabilities: tuple[float, ...]  # all types, in ATTACK_TYPES order
     pair: tuple[int, int]  # most over-represented (given label, looks-like class) pair
+    target_label: int  # most common label among flagged pictures (else surprising labels; -1)
+    mix_pair: tuple[int, int]  # (label whose share rose most, label whose share fell most)
 
 
 class Monitor:
@@ -94,9 +96,21 @@ class Monitor:
         _, j, i = pair_surprise(
             log_probs.argmax(dim=-1).flatten(), given.flatten(), self.calibration.reference_counts
         )
+        num_classes = log_probs.shape[-1]
+        cal = self.calibration
+        flagged = given[picture > cal.picture_threshold]
+        if len(flagged) == 0:
+            flagged = given[surprise(log_probs, given) > cal.surprise_threshold]
+        target = (
+            int(torch.bincount(flagged, minlength=num_classes).argmax()) if len(flagged) else -1
+        )
+        share = torch.bincount(given.flatten(), minlength=num_classes) / given.numel()
+        change = share - cal.label_counts / cal.label_counts.sum()
         return Verdict(
             attack_type=ATTACK_TYPES[best],
             confidence=probabilities[best].item(),
             probabilities=tuple(probabilities.tolist()),
             pair=(j, i),
+            target_label=target,
+            mix_pair=(int(change.argmax()), int(change.argmin())),
         )
