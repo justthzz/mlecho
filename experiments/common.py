@@ -4,6 +4,7 @@ Lives in experiments/ (not src/) because it uses MLflow and prints progress.
 """
 
 import argparse
+import json
 import time
 from types import SimpleNamespace
 
@@ -354,6 +355,11 @@ class Results:
 
     def model(self, short: str) -> torch.nn.Module:
         return mlflow.pytorch.load_model(f"runs:/{self.full_id(short)}/model", map_location="cpu")
+
+    def json(self, short: str, path: str):
+        """A JSON artifact of the run (e.g. one saved with mlflow.log_dict)."""
+        with open(self.client.download_artifacts(self.full_id(short), path)) as file:
+            return json.load(file)
 
     def image(self, short: str, path: str) -> np.ndarray:
         local = self.client.download_artifacts(self.full_id(short), path)
