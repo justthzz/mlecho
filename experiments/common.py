@@ -23,6 +23,8 @@ from mlecho.bench.datasets import get_cifar10_datasets, normalise
 from mlecho.bench.evaluation import alarm_rates, image_metrics, simulate_flag_counts
 from mlecho.bench.stream import Scenario
 from mlecho.bench.training import evaluate, train_one_epoch
+from mlecho.classification.classifier import AttackClassifier
+from mlecho.classification.features import FEATURES, Calibration, calibrate
 from mlecho.classification.monitor import Evidence
 from mlecho.classification.synthetic import Shift, apply_shift
 from mlecho.core import load_weights
@@ -341,6 +343,34 @@ class FoldScorer:
 
 
 # ---------- step 5: live training episodes (experiments 15, 16) ----------
+
+
+def add_guard_args(parser: argparse.ArgumentParser) -> None:
+    """Where the guard parts of experiments 09, 13 and 14 are saved."""
+    parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--patch", type=int, default=4)
+    parser.add_argument("--vae-prefix", default="data/checkpoints/vae-c16-z32-seed42-fold")
+    parser.add_argument("--reference-prefix", default="data/checkpoints/reference-w32-seed42-fold")
+    parser.add_argument("--classifier", default="data/checkpoints/attack-classifier-seed42.pt")
+
+
+def guard_parts(args, data, device) -> tuple["FoldScorer", Calibration, AttackClassifier]:
+    """The fold models, calibration and classifier of experiment 14 (as experiment 15 uses them)."""
+    targets = np.asarray(data.full.targets)
+    score = FoldScorer(args.vae_prefix, args.reference_prefix, args.folds, args.patch, device)
+    trusted_rows = np.concatenate([data.fit, data.held_out])
+    trusted = score(data.full.data[trusted_rows], np.arange(len(trusted_rows)) % args.folds)
+    calibration = calibrate(
+        trusted.picture,
+        trusted.log_probs,
+        torch.as_tensor(targets[trusted_rows]),
+        args.window * args.batch_size,
+        args.image_rate,
+        torch.Generator().manual_seed(42),  # experiment 14's classifier seed
+    )
+    classifier = load_weights(AttackClassifier(len(FEATURES)), args.classifier, device).cpu()
+    return score, calibration, classifier
+
 
 GM_TARGET = 8183  # test cat the gradient-matching poisons push towards "dog" (experiment 06)
 

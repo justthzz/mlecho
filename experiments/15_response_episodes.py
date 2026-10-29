@@ -23,16 +23,20 @@ import argparse
 from dataclasses import asdict
 
 import mlflow
-import numpy as np
 import torch
-from common import EpisodeMeasure, FoldScorer, add_detection_args, detection_data, episode_scenarios
+from common import (
+    EpisodeMeasure,
+    add_detection_args,
+    add_guard_args,
+    detection_data,
+    episode_scenarios,
+    guard_parts,
+)
 
 from mlecho.bench.baselines.response import NoResponse, QuarantineEverything
 from mlecho.bench.datasets import get_cifar10_datasets
 from mlecho.bench.models import SmallCNN
 from mlecho.bench.stream import run_episode
-from mlecho.classification.classifier import AttackClassifier
-from mlecho.classification.features import FEATURES, calibrate
 from mlecho.classification.monitor import Monitor
 from mlecho.core import get_device, load_weights, seed_everything
 from mlecho.guard import Guard
@@ -63,11 +67,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--measure-every", type=int, default=20)
     parser.add_argument("--measure-images", type=int, default=2000)
-    parser.add_argument("--folds", type=int, default=5)
-    parser.add_argument("--patch", type=int, default=4)
-    parser.add_argument("--vae-prefix", default="data/checkpoints/vae-c16-z32-seed42-fold")
-    parser.add_argument("--reference-prefix", default="data/checkpoints/reference-w32-seed42-fold")
-    parser.add_argument("--classifier", default="data/checkpoints/attack-classifier-seed42.pt")
+    add_guard_args(parser)
     return parser.parse_args()
 
 
@@ -76,22 +76,10 @@ def main() -> None:
     seed_everything(args.seed)
     device = get_device()
     data = detection_data(args.seed, args.fit_size, args.gm_cache)
-    targets = np.asarray(data.full.targets)
     _, _, test_set = get_cifar10_datasets(seed=args.seed, augment=False)
 
     # The guard: same detectors, calibration and classifier as experiment 14.
-    score = FoldScorer(args.vae_prefix, args.reference_prefix, args.folds, args.patch, device)
-    trusted_rows = np.concatenate([data.fit, data.held_out])
-    trusted = score(data.full.data[trusted_rows], np.arange(len(trusted_rows)) % args.folds)
-    calibration = calibrate(
-        trusted.picture,
-        trusted.log_probs,
-        torch.as_tensor(targets[trusted_rows]),
-        args.window * args.batch_size,
-        args.image_rate,
-        torch.Generator().manual_seed(42),  # experiment 14's classifier seed
-    )
-    classifier = load_weights(AttackClassifier(len(FEATURES)), args.classifier, device).cpu()
+    score, calibration, classifier = guard_parts(args, data, device)
 
     curve_measure = EpisodeMeasure(test_set, device, args.measure_images, args.seed)
     final_measure = EpisodeMeasure(test_set, device, None, args.seed)
