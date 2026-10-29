@@ -142,6 +142,7 @@ Notes:
 - [x] 6.4 **End to end** (exp 16, `88ac8138`): calibrated from scratch through the public API only, reproduces exp 15's actions and results.
 - [x] 6.5 **Overhead** re-measured on an idle machine (exp 10, `f11b0ae2`, `aa075621`): every batch +56–74%; `check_every=16` +4.7–4.9% (NFR-P1 met in quiet times). Lessons: check before augmentation; avoid GPU syncs (`filter`, lazy loss).
 - [x] 6.6 **Sampled episodes** (exp 15 sampled, every 4th and 16th, seeds 1–3): same protection (ASR 1.4–1.8%), first action later (55–245 batches after onset at every 16th). Found and fixed a rollback bug with sampling (`c5138b9`); default mode re-verified identical (`587be1f6`).
+- [x] 6.7 **Audit before PPO**: the package installs from a wheel into a fresh venv and runs the README example outside the repo; clear errors for wrong trusted data and missing MLflow; `py.typed`; README links work on PyPI. Experiment 17 (`56eb0050`): stronger reference models catch at most 3 points more flipped cats at twice the cost, so the reference model stays; the label-flip weak spot is a trusted-data limit.
 - Proposal deliverables still to plan: **Weights & Biases** live dashboard and **Docker** one-command packaging (RO4, section 1.12). Either build them here and in step 8, or agree with the supervisor to drop them.
 
 ### 7. PPO (`src/mlecho/response/ppo.py`, `src/mlecho/bench/env/`)

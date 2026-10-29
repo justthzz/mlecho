@@ -430,3 +430,18 @@ Only the public API: `Guard.calibrate` on the 5,000 trusted images from scratch 
 Every episode wrote 40 events (one per window) to `data/audit/guard-<scenario>-seed1.jsonl` and to the MLflow run (per-window metrics `guard_<scenario>_confidence`, `_p_<type>`, `_alarm`; one tag per action; `guard_<scenario>_events.json`).
 
 Finding: a guard calibrated from scratch by the library behaves like the one assembled by hand in experiments 09–15: the same actions at the same times (±1 window), backdoor and slow-drip removed, no false actions, the harmless change escalated. The pip-installable `Guard` reproduces the research pipeline.
+
+## Experiment 17: stronger reference models for the label check (before step 7)
+
+`python experiments/17_reference_model_variants.py` · MLflow experiment `mlecho-detection` · run `56eb0050`
+
+Question: the label-flip weak spot (cat → dog at 2% missed, exp 09; a third of the flipped images pass the quarantine, exp 15) comes from the reference model confusing cats and dogs. Would a stronger reference model, still trained only on the trusted images, fix it? Four models trained on the same 4,000 trusted images (100 epochs, AdamW, cosine, shifts and flips), scored on the 10,000 test images. "Flipped cats caught" = test cats with P(cat) > P(dog), i.e. dropped by the label-flip quarantine if labelled dog; "real dogs dropped" = test dogs with P(cat) > P(dog), the price. Speed: one forward pass of a batch of 128 on the M2.
+
+| Reference model | Held-out (1,000 trusted) | Test accuracy | Flipped cats caught | Real dogs dropped | ms per batch |
+|---|---|---|---|---|---|
+| current (`ReferenceCNN`, width 32) | 66.3% | 65.1% | 67.2% | 27.0% | 7.6 |
+| wider (width 64) | 69.9% | 68.9% | 67.3% | 23.1% | 16.4 |
+| width 32 + weight decay 5e-4 + label smoothing 0.1 | 66.6% | 65.8% | 67.9% | 25.5% | 7.9 |
+| deeper (two convolutions per stage) + decay + smoothing | 76.1% | 73.4% | **70.4%** | 18.1% | 16.6 |
+
+Finding: a better model raises overall accuracy by up to 8 points, but **catches only 3 points more flipped cats**, at twice the cost per checked batch (the guard is already at 4.7–4.9% overhead with `check_every = 16`, NFR-P1 < 5%). With ~400 trusted cats and ~400 trusted dogs, no small model trained from scratch tells them apart well: the label-flip weak spot is a limit of the trusted data, not of the model size. **Decision: keep the current reference model.** Ways that could help and are outside this project's assumptions: a larger trusted set, or pretrained image features (an external model, extra download and cost). A rollback for label-flip (undoing what was learned before the quarantine) is a response question, left to step 7 (PPO); the frozen rule table is not changed.
