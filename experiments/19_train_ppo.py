@@ -11,8 +11,9 @@ rules, quarantine-everything and random actions. If the rules don't beat no
 response clearly, the reward is wrong.
 
 Settings fixed before training (ROADMAP step 7): reward weights `RewardWeights()`,
-PPO with 2 x 64 hidden units, gamma 0.95 (a window's consequences matter for ~20
-windows), entropy bonus 0.01, the rest Stable-Baselines3 defaults.
+PPO with 2 x 64 hidden units, 512 steps per update, gamma 0.95 (a window's
+consequences matter for ~20 windows), entropy bonus 0.01, the rest
+Stable-Baselines3 defaults; 24,000 steps (~600 practice episodes).
 
 Run:   python experiments/19_train_ppo.py
 """
@@ -48,8 +49,8 @@ def parse_args() -> argparse.Namespace:
         "--burn-in", default="data/checkpoints/burn-in-smallcnn-w64-sgd0.01-seed42.pt"
     )
     parser.add_argument("--held-out", type=int, default=4, help="per kind, never trained on")
-    parser.add_argument("--timesteps", type=int, default=40_000)
-    parser.add_argument("--check-every", type=int, default=8_000, help="timesteps")
+    parser.add_argument("--timesteps", type=int, default=24_000)
+    parser.add_argument("--check-every", type=int, default=6_000, help="timesteps")
     parser.add_argument("--agent-seed", type=int, default=0)
     parser.add_argument("--out", default="data/checkpoints/ppo-response-seed0.pt")
     return parser.parse_args()
@@ -179,7 +180,7 @@ def main() -> None:
         agent = PPO(
             "MlpPolicy",
             env,
-            n_steps=1024,
+            n_steps=512,
             batch_size=64,
             gamma=0.95,
             ent_coef=0.01,
