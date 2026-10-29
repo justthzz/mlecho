@@ -56,6 +56,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vae", default="data/checkpoints/vae-c16-z32-seed42.pt")
     parser.add_argument("--reference", default="data/checkpoints/reference-w32-seed42-fold0.pt")
     parser.add_argument("--guard", default="data/checkpoints/guard-cifar10-seed42.pt")
+    parser.add_argument(
+        "--augment",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="random shifts and flips (the Guard must see batches before augmentation)",
+    )
     parser.add_argument("--mlflow-experiment", default="mlecho-detection")
     return parser.parse_args()
 
@@ -116,7 +122,7 @@ def timed_training(loader, device, vae, reference, setting, args) -> float:
 def main() -> None:
     args = parse_args()
     device = get_device()
-    loader, _, _ = get_cifar10_loaders(batch_size=128, seed=args.seed)
+    loader, _, _ = get_cifar10_loaders(batch_size=128, seed=args.seed, augment=args.augment)
     vae = load_weights(ConvVAE(), args.vae, device).eval()
     reference = load_weights(ReferenceCNN(), args.reference, device).eval()
 
@@ -128,7 +134,8 @@ def main() -> None:
             print(f"round {repeat + 1}: {name:30s} {seconds:6.2f} s")
 
     mlflow.set_experiment(args.mlflow_experiment)
-    with mlflow.start_run(run_name=f"detection-overhead-{args.victim}"):
+    plain = "" if args.augment else "-no-augment"
+    with mlflow.start_run(run_name=f"detection-overhead-{args.victim}{plain}"):
         mlflow.log_params(vars(args) | {"device": str(device)})
         fastest = {name: min(values) for name, values in times.items()}
         typical = {name: float(np.median(values)) for name, values in times.items()}

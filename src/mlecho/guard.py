@@ -7,6 +7,11 @@
         loss = train_step(images[keep], labels[keep])
         guard.update(loss)                      # after every window: verdict + action
 
+Give `check` the batches as they arrive, **before** any random augmentation
+(shifts, flips): poison is in the incoming data, and augmented images look
+"different from normal" to the picture check, so the guard would treat
+every window as a harmless shift (measured: experiment 10).
+
 `calibrate` learns what "normal" means from the user's own trusted clean
 images (cross-fitted CNN-VAEs and reference models, thresholds, made-up
 attacks and the attack classifier), so the guard is not tied to CIFAR-10.
