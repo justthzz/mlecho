@@ -58,6 +58,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--onset", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument(
+        "--check-every", type=int, default=1, help="Guard: score every n-th quiet batch"
+    )
     parser.add_argument("--measure-every", type=int, default=20)
     parser.add_argument("--measure-images", type=int, default=2000)
     parser.add_argument("--folds", type=int, default=5)
@@ -96,7 +99,8 @@ def main() -> None:
     names = args.scenarios or list(cases)
 
     mlflow.set_experiment("mlecho-response")
-    with mlflow.start_run(run_name=f"episodes-{args.policy}-seed{args.episode_seed}"):
+    sampled = f"-every{args.check_every}" if args.check_every > 1 else ""
+    with mlflow.start_run(run_name=f"episodes-{args.policy}{sampled}-seed{args.episode_seed}"):
         mlflow.log_params(vars(args) | {"device": str(device), "rules": str(RulePolicy())})
         for name in names:
             seed_everything(args.episode_seed)
@@ -117,7 +121,7 @@ def main() -> None:
                 cases["clean"].raw,
                 cases["clean"].labels,
                 cases[name],
-                Guard(monitor, POLICIES[args.policy]),
+                Guard(monitor, POLICIES[args.policy], check_every=args.check_every),
                 args.batches,
                 args.onset,
                 args.batch_size,

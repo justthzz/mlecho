@@ -52,6 +52,7 @@ class GuardConfig:
     made_up_configs: int = 40  # random triggers and shifts for the classifier
     made_up_windows: int = 600  # per attack type
     seed: int = 42
+    check_every: int = 1  # score every n-th batch while nothing is suspicious (speed)
 
 
 @dataclass
@@ -78,7 +79,11 @@ class Guard:
         policy: ResponsePolicy | None = None,
         loggers: list | None = None,
         config: GuardConfig | None = None,
+        check_every: int | None = None,
     ):
+        """`check_every`: in quiet times, score only every n-th batch (a window is then
+        `window` scored batches). Once a window looks suspicious, or a quarantine is
+        on, every batch is scored. Default: the config's value, else 1 (every batch)."""
         self.monitor = monitor
         self.policy = policy if policy is not None else RulePolicy()
         self.loggers = loggers or []
@@ -90,6 +95,11 @@ class Guard:
         self.checkpoints = CheckpointManager()
         self._incident = _Incident()
         self._evidence: tuple[Evidence, torch.Tensor] | None = None
+        if check_every is None:
+            check_every = config.check_every if config is not None else 1
+        self.check_every = check_every
+        self._in_window = 0  # scored batches in the current window
+        self._window_start = 0  # batches trained before the current window began
 
     # ---------- during training ----------
 
@@ -100,6 +110,10 @@ class Guard:
 
     def check(self, images: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         """Score one incoming batch (normalised images). Returns which images to train on."""
+        alert = self.quarantine is not None or self._incident.active
+        if not (alert or self.batches % self.check_every == 0):
+            self._evidence = None  # a quiet batch that isn't sampled
+            return torch.ones(len(labels), dtype=torch.bool, device=labels.device)
         evidence = self.monitor.evidence(images)
         self._evidence = (evidence, labels)
         keep = torch.ones(len(labels), dtype=torch.bool)
@@ -112,14 +126,19 @@ class Guard:
 
         Returns the action taken at a window's end (None in between).
         """
-        evidence, labels = self._evidence
         self.batches += 1
         incident = self._incident
         if loss is not None:
             incident.losses.append(loss)
-        verdict = self.monitor.add(evidence, labels)
+        if self._evidence is None:
+            return None
+        if self._in_window == 0:
+            self._window_start = self.batches - 1
+        self._in_window += 1
+        verdict = self.monitor.add(*self._evidence)
         if verdict is None:
             return None
+        self._in_window = 0
         state = self._next_state(verdict)
         action = self.policy.decide(state)
         self._carry_out(action, verdict)
@@ -143,7 +162,7 @@ class Guard:
             same = verdict.attack_type == incident.last_type
             incident.streak = incident.streak + 1 if same else 1
             if not incident.active:  # first suspicious window: remember where it began
-                incident.active, incident.start = True, self.batches - self.monitor.window
+                incident.active, incident.start = True, self._window_start
         incident.last_type = verdict.attack_type
         mean_loss = float(np.mean(incident.losses)) if incident.losses else 0.0
         previous = incident.previous_loss
@@ -266,6 +285,7 @@ class Guard:
         device: torch.device,
         policy: ResponsePolicy | None = None,
         loggers: list | None = None,
+        check_every: int | None = None,
     ) -> Guard:
         """A guard saved with `save`, ready to `watch` a new training run."""
         saved = torch.load(path, map_location="cpu", weights_only=True)
@@ -291,7 +311,7 @@ class Guard:
             config.patch,
             config.seed,
         )
-        return cls(monitor, policy, loggers, config)
+        return cls(monitor, policy, loggers, config, check_every)
 
 
 def _normaliser(config: GuardConfig):

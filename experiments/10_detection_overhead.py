@@ -41,6 +41,8 @@ SETTINGS = {  # name -> (run the picture check every n-th batch, label check eve
     "both checks, every 8th batch": (8, 8),
     "picture every batch, label every 8th": (1, 8),
     "MLEcho Guard, every batch": "guard",
+    "MLEcho Guard, every 4th quiet batch": "guard4",
+    "MLEcho Guard, every 8th quiet batch": "guard8",
 }
 
 
@@ -76,8 +78,9 @@ def make_victim(name: str) -> nn.Module:
 def timed_training(loader, device, vae, reference, setting, args) -> float:
     """Seconds for `args.batches` training steps with the given checks."""
     guard = None
-    if setting == "guard":
-        guard, setting = Guard.load(args.guard, device), (0, 0)
+    if isinstance(setting, str):  # "guard", "guard4", "guard8": the whole Guard
+        every = int(setting[5:] or 1)
+        guard, setting = Guard.load(args.guard, device, check_every=every), (0, 0)
     picture_every, label_every = setting
     seed_everything(args.seed)
     model = make_victim(args.victim).to(device)

@@ -109,3 +109,26 @@ def test_mlflow_logger_records_metrics_tags_and_the_event_list(tmp_path):
     mlflow.set_tracking_uri(previous)
     assert data.metrics["guard_p_backdoor"] == pytest.approx(0.9)
     assert "rollback" in data.tags["guard_action_1"]
+
+
+def test_sampled_checking_scores_every_nth_quiet_batch(tmp_path):
+    raw, labels = _trusted()
+    path = tmp_path / "guard.pt"
+    Guard.calibrate(raw, labels, 10, DEVICE, TINY).save(path)
+
+    class _Never:
+        def decide(self, state):
+            return Action.CONTINUE
+
+    guard = Guard.load(path, DEVICE, policy=_Never(), check_every=3)
+    guard._incident.active = False
+    images, targets = torch.randn(16, 3, 32, 32), torch.arange(16) % 10
+    verdict_at, scored = [], 0
+    for b in range(12):
+        guard.check(images, targets)
+        scored += guard._evidence is not None
+        if guard.update(0.0) is not None:
+            verdict_at.append(b + 1)
+        guard._incident.active = False  # keep it quiet: random images may look odd
+    assert scored == 4  # batches 1, 4, 7, 10
+    assert verdict_at == [4, 10]  # a window = 2 scored batches
