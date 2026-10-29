@@ -100,6 +100,7 @@ class Guard:
         self.checkpoints = CheckpointManager()
         self._incident = _Incident()
         self._evidence: tuple[Evidence, torch.Tensor] | None = None
+        self._pending: tuple[Verdict, State] | None = None  # observed, not yet responded to
         if check_every is None:
             check_every = config.check_every if config is not None else 1
         self.check_every = check_every
@@ -145,6 +146,19 @@ class Guard:
 
         Returns the action taken at a window's end (None in between).
         """
+        state = self.observe(loss)
+        if state is None:
+            return None
+        action = self.policy.decide(state)
+        self.respond(action)
+        return action
+
+    def observe(self, loss: float | torch.Tensor | None = None) -> State | None:
+        """The first half of `update`: the State at a window's end (None in between).
+
+        For a decision made outside the guard (a training environment, a human):
+        follow it with `respond(action)`.
+        """
         self.batches += 1
         incident = self._incident
         if loss is not None:
@@ -160,7 +174,14 @@ class Guard:
             return None
         self._in_window = 0
         state = self._next_state(verdict)
-        action = self.policy.decide(state)
+        self._pending = (verdict, state)
+        return state
+
+    def respond(self, action: Action) -> None:
+        """The second half of `update`: carry out the action, checkpoint, log the event."""
+        if self._pending is None:
+            raise RuntimeError("respond() needs a window's State from observe() first")
+        (verdict, state), self._pending = self._pending, None
         self._carry_out(action, verdict)
         self._previous_window_start = self._window_start
         if self.model is not None:
@@ -170,7 +191,6 @@ class Guard:
         event = {"batch": self.batches, "action": action.value} | asdict(verdict) | asdict(state)
         for logger in self.loggers:
             logger.log(event)
-        return action
 
     def _next_state(self, verdict: Verdict) -> State:
         incident = self._incident

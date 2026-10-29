@@ -201,3 +201,35 @@ def test_calibrate_explains_wrong_trusted_data(change, message):
     raw, labels = change(*_trusted())
     with pytest.raises(ValueError, match=message):
         Guard.calibrate(raw, labels, 10, DEVICE, TINY)
+
+
+def test_observe_and_respond_match_update(tmp_path):
+    raw, labels = _trusted()
+    path = tmp_path / "guard.pt"
+    Guard.calibrate(raw, labels, 10, DEVICE, TINY).save(path)
+    images, targets = torch.randn(16, 3, 32, 32), torch.arange(16) % 10
+    events = []
+    for split in (False, True):
+        torch.manual_seed(0)
+        model = nn.Sequential(nn.Flatten(), nn.Linear(3 * 32 * 32, 10))
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+        audit = AuditLog()
+        guard = Guard.load(path, DEVICE, policy=_AlwaysRollback(), loggers=[audit])
+        guard.watch(model, optimizer)
+        for _ in range(6):
+            kept, kept_labels = guard.filter(images, targets)
+            loss = nn.functional.cross_entropy(model(kept), kept_labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            if split:
+                state = guard.observe(loss)
+                if state is not None:
+                    guard.respond(guard.policy.decide(state))
+            else:
+                guard.update(loss)
+        events.append((audit.events, [p.detach().clone() for p in model.parameters()]))
+    assert events[0][0] == events[1][0]
+    assert all(torch.equal(a, b) for a, b in zip(events[0][1], events[1][1], strict=True))
+    with pytest.raises(RuntimeError, match="observe"):
+        guard.respond(Action.CONTINUE)
