@@ -7,7 +7,8 @@ the end. The guard (cross-fitted detectors, calibration and the attack
 classifier from experiment 14) watches every batch. Three policies:
 - none: no response (the control);
 - rules: MLEcho's rule table (`mlecho.response.rules`);
-- quarantine-everything: the same alarms, no attack type (ablation).
+- quarantine-everything: the same alarms, no attack type (ablation);
+- ppo: the PPO agent of experiment 19 (`--ppo`, step 7).
 
 Scenarios: clean, backdoor 5%, label-flip cat -> dog 5%, slow-drip 1 and 5
 per batch, gradient matching, and a harmless brightness change (x1.3).
@@ -40,6 +41,7 @@ from mlecho.bench.stream import run_episode
 from mlecho.classification.monitor import Monitor
 from mlecho.core import get_device, load_weights, seed_everything
 from mlecho.guard import Guard
+from mlecho.response.ppo import PPOPolicy
 from mlecho.response.rules import RulePolicy
 
 POLICIES = {
@@ -52,7 +54,8 @@ POLICIES = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     add_detection_args(parser)
-    parser.add_argument("--policy", choices=list(POLICIES), default="rules")
+    parser.add_argument("--policy", choices=[*POLICIES, "ppo"], default="rules")
+    parser.add_argument("--ppo", default="data/checkpoints/ppo-response-seed0.pt")
     parser.add_argument("--episode-seed", type=int, default=0, help="stream order, drip, folds")
     parser.add_argument("--scenarios", nargs="+", default=None, help="default: all")
     parser.add_argument(
@@ -86,6 +89,8 @@ def main() -> None:
     cases = episode_scenarios(data, args.seed)
     names = args.scenarios or list(cases)
 
+    policy = PPOPolicy(args.ppo) if args.policy == "ppo" else POLICIES[args.policy]
+
     mlflow.set_experiment("mlecho-response")
     sampled = f"-every{args.check_every}" if args.check_every > 1 else ""
     with mlflow.start_run(run_name=f"episodes-{args.policy}{sampled}-seed{args.episode_seed}"):
@@ -109,7 +114,7 @@ def main() -> None:
                 cases["clean"].raw,
                 cases["clean"].labels,
                 cases[name],
-                Guard(monitor, POLICIES[args.policy], check_every=args.check_every),
+                Guard(monitor, policy, check_every=args.check_every),
                 args.batches,
                 args.onset,
                 args.batch_size,
