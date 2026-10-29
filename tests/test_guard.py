@@ -132,3 +132,22 @@ def test_sampled_checking_scores_every_nth_quiet_batch(tmp_path):
         guard._incident.active = False  # keep it quiet: random images may look odd
     assert scored == 4  # batches 1, 4, 7, 10
     assert verdict_at == [4, 10]  # a window = 2 scored batches
+
+
+def test_filter_returns_the_same_batch_until_a_quarantine_starts(tmp_path):
+    raw, labels = _trusted()
+    path = tmp_path / "guard.pt"
+    Guard.calibrate(raw, labels, 10, DEVICE, TINY).save(path)
+    guard = Guard.load(path, DEVICE, policy=_AlwaysRollback())
+    model = nn.Sequential(nn.Flatten(), nn.Linear(3 * 32 * 32, 10))
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    guard.watch(model, optimizer)
+    images, targets = torch.randn(16, 3, 32, 32), torch.arange(16) % 10
+    kept, _ = guard.filter(images, targets)
+    assert kept is images  # no quarantine yet: the very same tensor
+    loss = nn.functional.cross_entropy(model(kept), targets)
+    guard.update(loss)  # a tensor is fine
+    guard.filter(images, targets)
+    assert guard.update(loss) == Action.ROLLBACK
+    kept, kept_labels = guard.filter(images, targets)
+    assert len(kept) == len(kept_labels) == int(guard.check(images, targets).sum())

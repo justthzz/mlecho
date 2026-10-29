@@ -39,8 +39,8 @@ guard.save("guard.pt")
 guard = Guard.load("guard.pt", device, loggers=[AuditLog("audit.jsonl"), MLflowLogger()])
 guard.watch(model, optimizer)                 # enables rollback and retrain
 for images, labels in loader:                 # normalised, BEFORE random augmentation
-    keep = guard.check(images, labels)        # False = left out (quarantine)
-    loss = train_step(images[keep], labels[keep])
+    images, labels = guard.filter(images, labels)   # leaves out quarantined images
+    loss = train_step(images, labels)
     guard.update(loss)                        # every 10 batches: verdict, action, audit event
 guard.close()
 ```

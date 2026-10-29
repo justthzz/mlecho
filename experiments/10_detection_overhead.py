@@ -43,6 +43,7 @@ SETTINGS = {  # name -> (run the picture check every n-th batch, label check eve
     "MLEcho Guard, every batch": "guard",
     "MLEcho Guard, every 4th quiet batch": "guard4",
     "MLEcho Guard, every 8th quiet batch": "guard8",
+    "MLEcho Guard, every 16th quiet batch": "guard16",
 }
 
 
@@ -103,8 +104,7 @@ def timed_training(loader, device, vae, reference, setting, args) -> float:
         images, labels = next(batches)
         images, labels = images.to(device), labels.to(device)
         if guard is not None:
-            keep = guard.check(images, labels)
-            images, labels = images[keep], labels[keep]
+            images, labels = guard.filter(images, labels)
         if picture_every and step % picture_every == 0:
             reconstruction_scores(vae, images, patch=4)
         if label_every and step % label_every == 0:
@@ -114,7 +114,7 @@ def timed_training(loader, device, vae, reference, setting, args) -> float:
         loss.backward()
         optimizer.step()
         if guard is not None:
-            guard.update(loss.item())
+            guard.update(loss)
     synchronize(device)
     return time.perf_counter() - start
 

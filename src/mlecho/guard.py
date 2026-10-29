@@ -3,8 +3,8 @@
     guard = Guard.calibrate(trusted_images, trusted_labels, num_classes=10, device=device)
     guard.watch(model, optimizer)               # lets rollback and retrain work
     for images, labels in loader:
-        keep = guard.check(images, labels)      # True = train on this image
-        loss = train_step(images[keep], labels[keep])
+        images, labels = guard.filter(images, labels)   # leaves out quarantined images
+        loss = train_step(images, labels)
         guard.update(loss)                      # after every window: verdict + action
 
 Give `check` the batches as they arrive, **before** any random augmentation
@@ -71,7 +71,7 @@ class _Incident:
     acted: bool = False
     escalated: bool = False
     last_type: str = "clean"
-    losses: list[float] = field(default_factory=list)
+    losses: list = field(default_factory=list)  # floats or loss tensors (read at window end)
     previous_loss: float | None = None
 
 
@@ -126,15 +126,28 @@ class Guard:
             keep = ~quarantine_mask(evidence, labels, self.monitor.calibration, self.quarantine)
         return keep.to(labels.device)
 
-    def update(self, loss: float | None = None) -> Action | None:
+    def filter(
+        self, images: torch.Tensor, labels: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """`check`, then the images and labels to train on. Returns the batch unchanged
+        (no copy, no waiting for the GPU) while no quarantine is in force."""
+        keep = self.check(images, labels)
+        if self.quarantine is None:
+            return images, labels
+        return images[keep.to(images.device)], labels[keep]
+
+    def update(self, loss: float | torch.Tensor | None = None) -> Action | None:
         """Call after the training step. At the end of a window: verdict, action, checkpoint.
+
+        `loss` may be the loss tensor itself: it is only read at the window's end,
+        so the training loop doesn't have to wait for the GPU every batch.
 
         Returns the action taken at a window's end (None in between).
         """
         self.batches += 1
         incident = self._incident
         if loss is not None:
-            incident.losses.append(loss)
+            incident.losses.append(loss.detach() if torch.is_tensor(loss) else loss)
         if self._evidence is None:
             return None
         if self._in_window == 0:
@@ -169,7 +182,7 @@ class Guard:
             if not incident.active:  # first suspicious window: remember where it began
                 incident.active, incident.start = True, self._window_start
         incident.last_type = verdict.attack_type
-        mean_loss = float(np.mean(incident.losses)) if incident.losses else 0.0
+        mean_loss = float(np.mean([float(x) for x in incident.losses])) if incident.losses else 0.0
         previous = incident.previous_loss
         incident.previous_loss, incident.losses = mean_loss, []
         return State(

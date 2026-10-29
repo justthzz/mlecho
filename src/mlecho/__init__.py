@@ -13,8 +13,8 @@ logged to MLflow.
                             GuardConfig(pixel_mean=..., pixel_std=...))
     guard.watch(model, optimizer)
     for images, labels in loader:
-        keep = guard.check(images, labels)
-        loss = train_step(images[keep], labels[keep])
+        images, labels = guard.filter(images, labels)
+        loss = train_step(images, labels)
         guard.update(loss)
 
 Research code from a Final Year Project; see the README for what is
