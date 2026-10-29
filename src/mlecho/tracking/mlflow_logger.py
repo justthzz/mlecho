@@ -13,7 +13,10 @@ class MLflowLogger:
     """Logs into the active MLflow run (start one with `mlflow.start_run()` first)."""
 
     def __init__(self, prefix: str = "guard"):
-        import mlflow  # only needed when this logger is used
+        try:
+            import mlflow  # only needed when this logger is used
+        except ImportError as error:
+            raise ImportError("MLflowLogger needs MLflow: pip install 'mlecho[mlflow]'") from error
 
         self.mlflow, self.prefix = mlflow, prefix
         self.events: list[dict] = []
