@@ -21,7 +21,7 @@ MLEcho monitors training batches as they stream through an MLOps pipeline and fl
 pip install mlecho
 ```
 
-> The release on PyPI (0.0.1) is an old placeholder. Version 0.1.0 (the `Guard` below) is not published yet: install from source (see [Development](#development)).
+> On [PyPI](https://pypi.org/project/mlecho/) there is only 0.0.1, an early placeholder. Version 0.1.0 (the `Guard` below) is not published yet, so for now install from source (see [Development](#development)).
 
 ## Usage
 

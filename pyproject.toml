@@ -46,6 +46,7 @@ dev = ["matplotlib", "pytest", "ruff"]
 [project.urls]
 Repository = "https://github.com/justthzz/mlecho"
 Issues = "https://github.com/justthzz/mlecho/issues"
+PyPI = "https://pypi.org/project/mlecho/"
 
 [tool.setuptools.packages.find]
 where = ["src"]
