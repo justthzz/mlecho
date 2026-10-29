@@ -2,7 +2,7 @@
 
 Build plan for the FYP. Update the status column and "Current step" when a step is finished.
 
-**Current step: 7 (PPO)**, in progress (7.1 done). Steps 1–6 are finished and re-verified; 0.1.0 is on PyPI.
+**Current step: 7 (PPO)**, in progress (7.1–7.3 done; PPO training, experiment 19, running). Steps 1–6 are finished and re-verified; 0.1.0 is on PyPI.
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
@@ -161,8 +161,9 @@ Plan (fixed before training; written 2026-10-30):
 - **Reward per window**, measured on small test subsets (privileged: only the practice world knows the attack): − attack effect (ASR above the clean level, or the flipped class's share), − clean accuracy drop, − clean images left out, − a small cost per escalation (a human's time; more when nothing is wrong).
 - **Fair final test:** real experiment 15 episodes on **fresh seeds 4–6** (never seen by the rules or PPO): rules vs PPO vs no response (+ quarantine-everything). Development only on seed 0.
 - [x] 7.1 `Guard.observe` / `Guard.respond`: `update` split in two so a decision can come from outside (the practice world). Same order of operations; test `observe_and_respond_match_update`; experiment 15 rerun `ab4d6c46`: all 70 metrics identical.
-- [ ] 7.2 Practice attacks and the evidence cache (`bench/env/`).
-- [ ] 7.3 Gymnasium env + reward; random-policy and rules sanity checks inside it.
+- [x] 7.2 Practice attacks and the evidence cache (`bench/env/practice.py`; experiment 18, run `1e263c2f`): 120 scored practice streams (24 per kind, 400 batches, onset 60–200, practice seed 7), 30 min; mean poisoned images per episode: backdoor 1,853, slow-drip 876, label-flip 1,275.
+- [x] 7.3 Gymnasium env + reward (`bench/env/env.py`, `ResponseEnv`, replays a cached stream through a real `Guard`; passes Gymnasium's `check_env`). ~13 s per practice episode (victim training dominates). Sanity baselines (none, rules, quarantine-everything, random) run on the held-out practice episodes at the start of experiment 19.
+- Note: Stable-Baselines3 2.9's `PPO.save/load` fails with torch 2.14 (nested-zip read error, even on CartPole); `PPOPolicy` saves and loads only the network (`policy.save`), which works.
 - [ ] 7.4 Train PPO (Stable-Baselines3); `response/ppo.py` (`PPOPolicy`, extra `mlecho[rl]`).
 - [ ] 7.5 Final test on seeds 4–6; RESULTS; guides.
 
