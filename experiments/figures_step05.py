@@ -15,12 +15,17 @@ import numpy as np
 from common import BLUE, GREY, ORANGE, VERMILLION, Results
 
 RUNS = {  # final runs (docs/RESULTS.md, experiment 15): policy -> one run per episode seed
-    "none": ["NONE1", "NONE2", "NONE3"],
-    "rules": ["RULES1", "RULES2", "RULES3"],
-    "quarantine-everything": ["QE1", "QE2", "QE3"],
+    "none": ["6c468177", "e424fc83", "068ff409"],
+    "rules": ["89584acc", "8d86727c", "8348b294"],
+    "quarantine-everything": ["792660a6", "e85b9a5f", "b9e16971"],
 }
 COLOURS = {"none": VERMILLION, "rules": BLUE, "quarantine-everything": ORANGE}
-NAMES = {"none": "no response", "rules": "MLEcho rules", "quarantine-everything": "quarantine all"}
+NAMES = {
+    "none": "no response",
+    "rules": "MLEcho rules",
+    "quarantine-everything": "quarantine all",
+}
+LINES = {"none": "-", "rules": "-", "quarantine-everything": "--"}  # dashed: overlaps show
 ONSET = 100
 SCENARIOS = {
     "clean": "clean",
@@ -45,7 +50,13 @@ def over_time(results, panels, key, ylabel, title) -> plt.Figure:
     for ax, scenario in zip(np.atleast_1d(axes), panels, strict=True):
         for policy in RUNS:
             batches, values = curves(results, policy, scenario, key)
-            ax.plot(batches, values, color=COLOURS[policy], label=NAMES[policy])
+            ax.plot(
+                batches,
+                values,
+                LINES[policy],
+                color=COLOURS[policy],
+                label=NAMES[policy],
+            )
         ax.axvline(ONSET, color=GREY, linestyle="--", linewidth=1)
         ax.text(ONSET + 4, 50, "attack starts", fontsize=7, color=GREY, rotation=90)
         ax.set_title(SCENARIOS[scenario], fontsize=9)

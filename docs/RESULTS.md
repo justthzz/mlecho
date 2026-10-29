@@ -332,3 +332,37 @@ Findings:
 6. **A non-linear model does not help.** The random forest fits the made-up windows better (train 93.5% vs 82.7%) but is no better on new settings (84.9% vs 83.9%) and generalises worse to unseen shift kinds (hue 40% vs 79.5%). The simple, readable softmax stays.
 
 Development history (same script, before the official runs): `0973546c` (made-up triggers in any colour only: most were invisible to the picture check, development 75.6%), `6f921c91` (half vivid triggers, dispersion = variance ÷ mean as the cross-batch feature, which got weight ≈ 0), `faffe1fa` (steadiness = mean − variance, as official, before the `--model` and `--classifier-seed` options; same numbers as `e35fb511`).
+
+## Experiment 15: responding during live training (step 5, RQ3)
+
+`python experiments/15_response_episodes.py --policy {rules,none,quarantine-everything} --episode-seed S` · MLflow experiment `mlecho-response` · **final runs (episode seeds 1–3)**: rules `89584acc`, `8d86727c`, `8348b294`; no response `6c468177`, `e424fc83`, `068ff409`; quarantine-everything `792660a6`, `e85b9a5f`, `b9e16971`
+
+Setup: the burn-in model (SGD, 83.3% test) keeps learning online, one SGD update (lr 0.01, momentum 0.9) per batch of 128 training images, for 400 batches. Batches 1–100 are clean; **from batch 100 the attack is in the stream** until the end. The guard (5 fold VAEs from experiment 13, 5 fold reference models from experiment 09, the calibration and classifier of experiment 14 `e35fb511`) scores every batch and gives a verdict every 10 batches. Policies: **none** (control), **rules** (`RulePolicy`: act after 2 windows in a row; confidence < 0.6 → escalate; backdoor → rollback, accumulative → retrain, label-flip → quarantine, harmless shift → escalate; fixed before the evaluation, see ROADMAP step 5), **quarantine-everything** (same alarms, no attack type: always quarantines, never rolls back or escalates). Final measurement on the full test set; curves every 20 batches on 2,000 test images.
+
+**Method: development vs final.** Episode seed 0 was used for development (runs `49c943c8`, `330028aa`, `4a27b0b4`). It showed two weaknesses in the first quarantine masks: ~10% of trigger poison leaked through and re-taught the backdoor (final ASR 13.9% backdoor, 15.5% slow-drip 5), and the label-flip quarantine aimed at the wrong class pair (64 of ~1,860 poisoned images removed; cat accuracy 31.2% vs 28.8% with no response). The masks were changed (the verdict's target label and the label-mix pair, `actions/quarantine.py`); **the rule table was not changed**. Seeds 1–3 were then run once, with everything frozen.
+
+Final results, mean ± standard deviation over episode seeds 1–3 (attack effect = ASR on 9,000 triggered test images, or share of the 1,000 test cats called dog):
+
+| Scenario | Attack effect: none / **rules** / quarantine-everything | Clean test accuracy: none / rules / q-e | Clean images left out (rules / q-e) | First action (rules, per seed) |
+|---|---|---|---|---|
+| clean | – | 84.7 / 84.7 / 84.7 | 0 / 0 | none, none, none |
+| backdoor 5% | 99.8 ± 0.1 / **1.4 ± 0.2** / 69.5 ± 5.0 | 84.7 / 84.1 / 84.1 | 1,444 / 1,531 | escalate, rollback, rollback |
+| label-flip cat → dog 5% | 47.2 ± 6.2 / **20.0 ± 3.7** / 20.0 ± 3.7 | 81.6 / 83.7 / 83.7 | 1,259 / 1,259 | quarantine ×3 |
+| slow-drip 1 per batch | 97.1 ± 1.5 / **1.3 ± 0.6** / 4.4 ± 1.0 | 84.3 / 84.2 / 83.9 | 1,369 / 1,547 | escalate, escalate, retrain |
+| slow-drip 5 per batch | 99.5 ± 0.3 / **1.2 ± 0.0** / 37.0 ± 1.3 | 84.5 / 83.8 / 84.2 | 1,566 / 1,581 | escalate, retrain, retrain |
+| gradient matching | target P(dog) 22.8 ± 4.6 (all three; clean stream 11.5) | 84.8 (all) | 0 / 0 | none (never detected) |
+| harmless brighter ×1.3 | – | 83.2 / 83.2 / 83.1 | **0 / 2,331** | escalate ×3 |
+
+Cat accuracy, label-flip: 30.0% (none), 57.0% (rules), vs 74.6% on the clean stream. ASR without poison: 1.7%.
+
+Recovery (batches after the onset until the effect stays below 10% ASR, or 25% cats called dog, to the end; per seed): backdoor — rules 40, 20, 80; none and quarantine-everything never. Slow-drip 1 — rules 20, 100, 20; quarantine-everything 120, 20, 20; none never. Slow-drip 5 — rules 20, 20, 40; others never. Label-flip — rules (= quarantine-everything) 280, 200, 40; none never.
+
+Where "first action" is escalate, the first suspicious windows had confidence < 0.6; the rollback or retrain followed one or two windows later.
+
+Findings:
+1. **H3 is supported for trigger attacks.** With no response the backdoor and both slow-drips are fully learned (97–100% ASR). The rules bring ASR back to the clean level (1.2–1.4%) within 20–100 batches after the onset, while clean accuracy stays within 0.7 points of no response. The 280 ± 160 poisoned images the rules "still learned from" in the backdoor case are mostly those before the rollback, which undoes them.
+2. **The attack type matters.** The same alarms without the classifier (quarantine-everything) leave the backdoor in place (69.5% ASR, 37.0% for slow-drip 5): blocking new poison is not enough once the trigger is learned; the rollback is what removes it. On the harmless brightness change it throws away 2,331 good images, where the rules escalate and delete nothing.
+3. **Label-flip recovers only partly.** Quarantine halves the damage (cats called dog 47% → 20%; cat accuracy 30% → 57%), but it does not get back to the clean 75%: about a third of the flipped images (703 of ~1,930) still pass the quarantine, since a weak reference model can't tell cats from dogs well. The pre-registered rule (quarantine only, on the assumption that clean training unlearns flips) is the weakest part of the table; a rollback could do better. That is a question for step 7 (PPO) to explore, not a change to the frozen rules.
+4. **No false actions on clean data** (0 actions in 3 × 400 batches), and the harmless change is escalated, never acted on.
+5. **Gradient matching is never detected**, so nothing can respond; in this online setting it doubles the target's P(dog) (11.5% → 22.8%). Limit, consistent with H2.
+6. **Cost:** quarantine leaves out 1,260–1,570 clean images per episode (3.3–4.1% of the 38,400 images after the onset).
