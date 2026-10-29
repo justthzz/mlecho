@@ -76,7 +76,7 @@ def run_episode(
     device: torch.device,
     seed: int,
 ) -> EpisodeLog:
-    """Run one episode with a fresh `guard` (not yet watching) and return its log.""" ""
+    """Run one episode with a fresh `guard` (not yet watching) and return its log."""
     rng = np.random.default_rng(seed)
     loss_fn = nn.CrossEntropyLoss()
     audit = AuditLog()  # the episode's own copy of the guard's events
