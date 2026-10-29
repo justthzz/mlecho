@@ -388,6 +388,31 @@ Findings:
 5. **Gradient matching is never detected**, so nothing can respond; in this online setting it doubles the target's P(dog) (11.5% → 22.8%). Limit, consistent with H2.
 6. **Cost:** quarantine leaves out 1,260–1,570 clean images per episode (3.3–4.1% of the 38,400 images after the onset).
 
+### Experiment 15, step 6: sampled checking (`--check-every 4` and `16`)
+
+`python experiments/15_response_episodes.py --policy rules --episode-seed S --check-every N` · runs (seeds 1, 2, 3): every 4th `dd7bf52f`, `bbf7799e`, `70546003`; every 16th `53ff7f0c`, `f551aa73`, `43843a95`. After the rollback fix (`c5138b9`, see below), the default mode was re-run once more (`587be1f6`): all 70 metrics identical to `89584acc`.
+
+Same episodes and frozen rules as above, but in quiet times the guard scores only every N-th batch (the setting that meets NFR-P1, experiment 10); once a window looks suspicious or a quarantine is on, it scores every batch. A window still holds 10 scored batches, so in quiet times it spans 10 × N batches.
+
+| Scenario | Attack effect: every batch / every 4th / **every 16th** | Clean accuracy (every 16th) | First action, batch (every 4th; every 16th; per seed 1, 2, 3) |
+|---|---|---|---|
+| clean | – | 84.7 | none; none |
+| backdoor 5% | 1.4 ± 0.2 / 1.5 ± 0.3 / **1.6 ± 0.2** | 84.0 | rollback 127 ×3; rollback 165, 315, 175 |
+| label-flip cat → dog 5% | 20.0 ± 3.7 / 20.2 ± 3.7 / **21.7 ± 4.3** | 83.3 | escalate 167, quarantine 167, 167; quarantine 315, 315, 335 |
+| slow-drip 1 per batch | 1.3 ± 0.6 / 1.5 ± 0.2 / **1.4 ± 0.3** | 84.0 | retrain 167, escalate 197, retrain 167; retrain 175, 315, 345 |
+| slow-drip 5 per batch | 1.2 ± 0.0 / 1.2 ± 0.2 / **1.8 ± 0.2** | 84.0 | escalate 127, retrain 137, 137; retrain 155, 165, 165 |
+| gradient matching | never detected (all) | 84.8 | none; none |
+| harmless brighter ×1.3 | – | 83.2 | escalate 127 ×3; escalate 155, 315, 315 |
+
+Cat accuracy, label-flip: 57.0% (every batch), 58.0% (every 4th), 54.2% (every 16th).
+
+**Bug found here and fixed (`c5138b9`).** The first every-16th runs (`d0da2851`, `e58f7275`, `f16e4728`, superseded) left one backdoor episode at 91% ASR (mean 31.4 ± 42.2). The rollback target was "the last clean checkpoint at least one window (10 batches) before the incident", but with sampling a window spans up to 160 batches, so that checkpoint could already hold the learned trigger. The guard now remembers where the previous window really began and rolls back to before it. The every-4th runs before the fix (`185518f5`, `2d9119c9`, `80477813`) are also superseded.
+
+Findings:
+1. **Sampling keeps the protection.** Every attack the every-batch guard handles is still removed with checking every 16th quiet batch (ASR 1.4–1.8%), with no false actions on the clean stream and the harmless change still escalated.
+2. **The price is time to the first action.** Every batch: 20–40 batches after the onset (exp 15). Every 4th: 27–97. Every 16th: 55–245. Before the rollback the model learns more poison (backdoor: 766 poisoned images trained on vs 177 at every 4th), which the rollback undoes. For label-flip, where there is no rollback, the later quarantine costs a little (cat accuracy 54% vs 57%).
+3. So `check_every = 16` meets both NFR-P1 (< 5% overhead in quiet times) and the protection of experiment 15, at the cost of a later reaction (up to ~250 batches here). This trade-off is a user setting.
+
 ## Experiment 16: the Guard end to end, as a user runs it (step 6)
 
 `python experiments/16_guard_end_to_end.py` · MLflow experiment `mlecho-guard` · run `88ac8138`
