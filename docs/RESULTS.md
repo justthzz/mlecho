@@ -288,7 +288,7 @@ Finding: the cross-fitted picture check behaves like the single VAE per image (r
 
 ## Experiment 14: attack classifier (step 4, RQ2)
 
-`python experiments/14_attack_classifier.py [--classifier-seed S] [--model forest]` · MLflow experiment `mlecho-detection` · official run `e35fb511` (softmax, seed 42); repeats `0bdcd525` (seed 1), `7ae2e890` (seed 2); comparison `dcf6afa4` (random forest, seed 42)
+`python experiments/14_attack_classifier.py [--classifier-seed S] [--model forest]` · MLflow experiment `mlecho-detection` · official run `e35fb511` (softmax, seed 42); repeats `0bdcd525` (seed 1), `7ae2e890` (seed 2); comparison `dcf6afa4` (random forest, seed 42); rerun after the step 6 refactor (made-up windows moved into the library): `32b43b58`, all 200 metrics identical
 
 Setup: one **window** = 10 batches of 128 images. For each window, 10 numbers (`classification/features.py`), each measured against the trusted data: picture flag rate, picture steadiness (mean − variance of flags per batch), median picture score, top-label share and label surprise of flagged pictures, label flag rate, median label surprise, top-label share of surprising labels, label pattern z, label-mix PSI. Out-of-fold evidence: 5 fold VAEs (experiment 13) and 5 fold reference models (experiment 09). Classifier: softmax regression (L-BFGS, L2 1e-3) over 5 types: clean, backdoor, label-flip, accumulative, harmless shift.
 
@@ -335,7 +335,7 @@ Development history (same script, before the official runs): `0973546c` (made-up
 
 ## Experiment 15: responding during live training (step 5, RQ3)
 
-`python experiments/15_response_episodes.py --policy {rules,none,quarantine-everything} --episode-seed S` · MLflow experiment `mlecho-response` · **final runs (episode seeds 1–3)**: rules `89584acc`, `8d86727c`, `8348b294`; no response `6c468177`, `e424fc83`, `068ff409`; quarantine-everything `792660a6`, `e85b9a5f`, `b9e16971`
+`python experiments/15_response_episodes.py --policy {rules,none,quarantine-everything} --episode-seed S` · MLflow experiment `mlecho-response` · **final runs (episode seeds 1–3)**: rules `89584acc`, `8d86727c`, `8348b294` (rerun of seed 1 after the step 6 refactor through `Guard`: `054b26d4`, all 70 metrics identical); no response `6c468177`, `e424fc83`, `068ff409`; quarantine-everything `792660a6`, `e85b9a5f`, `b9e16971`
 
 Setup: the burn-in model (SGD, 83.3% test) keeps learning online, one SGD update (lr 0.01, momentum 0.9) per batch of 128 training images, for 400 batches. Batches 1–100 are clean; **from batch 100 the attack is in the stream** until the end. The guard (5 fold VAEs from experiment 13, 5 fold reference models from experiment 09, the calibration and classifier of experiment 14 `e35fb511`) scores every batch and gives a verdict every 10 batches. Policies: **none** (control), **rules** (`RulePolicy`: act after 2 windows in a row; confidence < 0.6 → escalate; backdoor → rollback, accumulative → retrain, label-flip → quarantine, harmless shift → escalate; fixed before the evaluation, see ROADMAP step 5), **quarantine-everything** (same alarms, no attack type: always quarantines, never rolls back or escalates). Final measurement on the full test set; curves every 20 batches on 2,000 test images.
 
