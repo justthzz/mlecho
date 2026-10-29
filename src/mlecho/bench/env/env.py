@@ -82,7 +82,9 @@ class _Outcome:
         return model(images).argmax(dim=1).cpu()
 
     def accuracy(self, model: nn.Module) -> float:
-        return (self.predict(model, self.clean) == torch.as_tensor(self.labels)).float().mean().item()
+        return (
+            (self.predict(model, self.clean) == torch.as_tensor(self.labels)).float().mean().item()
+        )
 
     def effect(self, model: nn.Module, attack: PracticeAttack, key: int) -> float:
         if key not in self._effect_images:
@@ -103,6 +105,18 @@ class _Outcome:
         return None, -1
 
 
+def play(env: "ResponseEnv", decide, episode: int) -> tuple[float, dict]:
+    """One whole episode with `decide(observation, state) -> Action`. Returns
+    (total reward, the last step's info)."""
+    obs, info = env.reset(options={"episode": episode})
+    total, done = 0.0, False
+    while not done:
+        action = ACTIONS.index(decide(obs, info["state"]))
+        obs, reward, done, _, info = env.step(action)
+        total += reward
+    return total, info
+
+
 class ResponseEnv(gym.Env):
     """Practice world for a response policy: observations are `State`s, actions `Action`s."""
 
@@ -121,7 +135,7 @@ class ResponseEnv(gym.Env):
         window: int = 10,
         lr: float = 0.01,
         momentum: float = 0.9,
-        weights: RewardWeights = RewardWeights(),
+        weights: RewardWeights | None = None,
         measure_images: int = 1000,
         seed: int = 0,
     ):
@@ -130,7 +144,8 @@ class ResponseEnv(gym.Env):
         self.calibration, self.classifier, self.window = calibration, classifier, window
         self.burn_in = {k: v.detach().clone() for k, v in burn_in.state_dict().items()}
         self.model = burn_in
-        self.lr, self.momentum, self.weights, self.device = lr, momentum, weights, device
+        self.lr, self.momentum, self.device = lr, momentum, device
+        self.weights = weights or RewardWeights()
         self.outcome = _Outcome(validation_raw, validation_labels, device, measure_images, seed)
         self.start_accuracy = None
         self._start_effect: dict[int, float] = {}
@@ -163,7 +178,7 @@ class ResponseEnv(gym.Env):
         self.batch, self.totals = 0, {"clean_dropped": 0, "poison_trained": 0}
         self._window_clean_dropped = self._window_images = 0
         state = self._train_until_window_end()
-        return observation(state), {}
+        return observation(state), {"state": state}
 
     def step(self, action: int):
         chosen = ACTIONS[int(action)]
@@ -175,6 +190,7 @@ class ResponseEnv(gym.Env):
         reward, info = self._reward(chosen, attacked)
         terminated = state is None
         obs = np.zeros(OBSERVATION_SIZE, np.float32) if terminated else observation(state)
+        info["state"] = state  # for policies that read the State itself (the rules)
         return obs, reward, terminated, False, info
 
     # ---------- inside ----------
