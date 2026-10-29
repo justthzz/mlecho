@@ -21,18 +21,23 @@ mlecho/
 │   │   ├── training.py  train / evaluate loop                            (step 1)
 │   │   ├── online.py    one update per incoming batch (live stream)      (step 2)
 │   │   ├── evaluation.py  AUC, detection metrics, simulated training streams (step 3)
-│   │   ├── baselines/   PSI/KS drift detector to compare against         (step 3)
+│   │   ├── stream.py    live training episodes with an attack onset      (step 5)
+│   │   ├── baselines/   PSI/KS drift detector (step 3); NoResponse and
+│   │   │                QuarantineEverything response baselines           (step 5)
 │   │   └── env/         Gymnasium practice world for training PPO        (step 7)
 │   │
 │   │  ── the guard: what a real user runs ──
 │   ├── detection/       CNN-VAE picture check + label check              (step 3)
-│   │                    vae.py, label_check.py, thresholds.py
+│   │                    vae.py, label_check.py (+ PSI), thresholds.py,
+│   │                    folds.py (cross-fitting for calibration)
 │   ├── classification/  which attack is it?                              (step 4)
 │   │                    features.py (window -> 10 numbers), synthetic.py
-│   │                    (made-up attacks for calibration), classifier.py
-│   ├── response/        base.py interface, rules.py, ppo.py              (steps 5, 7)
-│   ├── actions/         quarantine, checkpoints, rollback, retrain       (step 5)
-│   ├── tracking/        MLflow event logging                             (step 6)
+│   │                    (made-up attacks), training_data.py (made-up
+│   │                    windows), classifier.py, monitor.py (live verdicts)
+│   ├── response/        base.py (Action, State, interface), rules.py,     (step 5)
+│   │                    ppo.py                                           (step 7)
+│   ├── actions/         checkpoints.py (rollback, retrain), quarantine.py (step 5)
+│   ├── tracking/        audit.py (JSON lines), mlflow_logger.py           (step 6)
 │   └── guard.py         Guard: the one object users touch                (step 6)
 │
 ├── experiments/         numbered scripts that RUN things (01_, 02_, ...)
