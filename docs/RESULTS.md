@@ -410,7 +410,7 @@ Cat accuracy, label-flip: 57.0% (every batch), 58.0% (every 4th), 54.2% (every 1
 
 Findings:
 1. **Sampling keeps the protection.** Every attack the every-batch guard handles is still removed with checking every 16th quiet batch (ASR 1.4–1.8%), with no false actions on the clean stream and the harmless change still escalated.
-2. **The price is time to the first action.** Every batch: 20–40 batches after the onset (exp 15). Every 4th: 27–97. Every 16th: 55–245. Before the rollback the model learns more poison (backdoor: 766 poisoned images trained on vs 177 at every 4th), which the rollback undoes. For label-flip, where there is no rollback, the later quarantine costs a little (cat accuracy 54% vs 57%).
+2. **The price is time to the first action.** Every batch: 10–40 batches after the onset (exp 15, batches 110–140). Every 4th: 27–97. Every 16th: 55–245. Before the rollback the model learns more poison (backdoor: 766 poisoned images trained on vs 177 at every 4th), which the rollback undoes. For label-flip, where there is no rollback, the later quarantine costs a little (cat accuracy 54% vs 57%).
 3. So `check_every = 16` meets both NFR-P1 (< 5% overhead in quiet times) and the protection of experiment 15, at the cost of a later reaction (up to ~250 batches here). This trade-off is a user setting.
 
 ## Experiment 16: the Guard end to end, as a user runs it (step 6)
