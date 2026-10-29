@@ -2,7 +2,7 @@
 
 Build plan for the FYP. Update the status column and "Current step" when a step is finished.
 
-**Current step: 7 (PPO)**, not started. Steps 1–6 are finished and re-verified.
+**Current step: 7 (PPO)**, in progress (7.1 done). Steps 1–6 are finished and re-verified; 0.1.0 is on PyPI.
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
@@ -153,6 +153,18 @@ Notes:
 - Curriculum: easy backdoors first, then subtle attacks. Stable-Baselines3 PPO.
 - The env uses SmallCNN; if the final results use ResNet-18, check that the policy still works there (the observations are dataset- and model-independent numbers, so it should).
 - RL dependencies go in an optional extra `mlecho[rl]`.
+
+Plan (fixed before training; written 2026-10-30):
+- **Fast practice episodes.** The guard scores every incoming batch before any filtering, so evidence and verdicts don't depend on the actions. Per practice attack, the evidence is computed once and cached; a practice episode then only trains the victim (~5–8 s instead of ~50 s).
+- **Practice on made-up attacks only** (as the classifier): random triggers (backdoor, slow-drip at random rates), random label-flip pairs, harmless shifts, clean streams; random onset. The real experiment 15 attacks are never used for training.
+- **Observation** = the `State` the rules see (5 probabilities, confidence, streak, acted, escalated, loss change), so `PPOPolicy` plugs into `Guard(policy=...)`. **Action** = the 5 actions. One step = one window.
+- **Reward per window**, measured on small test subsets (privileged: only the practice world knows the attack): − attack effect (ASR above the clean level, or the flipped class's share), − clean accuracy drop, − clean images left out, − a small cost per escalation (a human's time; more when nothing is wrong).
+- **Fair final test:** real experiment 15 episodes on **fresh seeds 4–6** (never seen by the rules or PPO): rules vs PPO vs no response (+ quarantine-everything). Development only on seed 0.
+- [x] 7.1 `Guard.observe` / `Guard.respond`: `update` split in two so a decision can come from outside (the practice world). Same order of operations; test `observe_and_respond_match_update`; experiment 15 rerun `ab4d6c46`: all 70 metrics identical.
+- [ ] 7.2 Practice attacks and the evidence cache (`bench/env/`).
+- [ ] 7.3 Gymnasium env + reward; random-policy and rules sanity checks inside it.
+- [ ] 7.4 Train PPO (Stable-Baselines3); `response/ppo.py` (`PPOPolicy`, extra `mlecho[rl]`).
+- [ ] 7.5 Final test on seeds 4–6; RESULTS; guides.
 
 ### 8. Evaluation
 - Two victim models: SmallCNN (width 64, ~86%) for everyday development and the PPO env; **CIFAR ResNet-18** (target ~93–95%, the standard in backdoor papers) for the final headline results. ResNet-18 takes ~1.8 min/epoch on the M2, so run it overnight or on the university GPU.
