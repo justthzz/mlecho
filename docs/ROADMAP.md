@@ -2,7 +2,7 @@
 
 Build plan for the FYP. Update the status column and "Current step" when a step is finished.
 
-**Current step: 5 (rules + actions)**, in progress (see the step 5 checklist)
+**Current step: 6 (library + MLflow)**, in progress
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
@@ -10,7 +10,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 | 2 | Attacks | ✅ all 4 attacks built, tested and recorded (Pang et al. partially reproduced; slow-drip used); figures + study guides done | poisoned data + proof the attack works while clean accuracy looks normal | "the problem is real" |
 | 3 | Detector | ✅ picture check (backdoor AUC 0.994, 100% of windows) + label check (label pattern catches distinct-class flips; misses cat→dog, gradient matching); overhead, false alarms under shift and KS/PSI baselines measured | CNN-VAE picture check + label check, calibrated thresholds | RQ1 |
 | 4 | Classifier | ✅ softmax regression on 10 window features, trained only on made-up attacks: official backdoor 86.5%, label-flip 98%, slow-drip 76.5–99%, clean 97%; gradient matching unclassifiable | attack-type classifier on detector features | RQ2 |
-| 5 | Rules + actions | ⬜ | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
+| 5 | Rules + actions | ✅ rule table + quarantine / rollback / retrain / escalate; live episodes (3 final seeds): trigger ASR 97–100% → 1.2–1.4%, label-flip halved, 0 false actions, harmless change escalated | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
 | 6 | Library + MLflow | ⬜ | `Guard.check(images, labels)`, event logging to MLflow | NFR-A1 |
 | 7 | PPO | ⬜ | Gymnasium env, PPO agent behind the same interface as the rules | RQ4 |
 | 8 | Evaluation | ⬜ | all comparisons, overhead benchmark (<5%), results tables and figures | RQ1–RQ4, NFR-P1 |
@@ -123,8 +123,8 @@ Notes:
 #### Step 5 checklist
 - [x] 5.1 **Library code** (9 tests in `tests/test_response.py`): `classification/monitor.py` (`Monitor`: evidence per batch from a random fold model, a `Verdict` per 10-batch window), `response/base.py` (`Action`, `State`, `ResponsePolicy`), `response/rules.py` (`RulePolicy`), `actions/checkpoints.py` (`CheckpointManager`: a copy after every window, marked clean or not), `actions/quarantine.py` (`quarantine_mask`), `bench/stream.py` (`run_episode`: live online training with an attack onset; also the PPO world for step 7), `bench/baselines/response.py` (`QuarantineEverything`).
 - **Rule table, fixed before the evaluation** (from step 4): act only after **2 windows in a row** with the same non-clean answer (3% of clean windows are misread); confidence < **0.6** → escalate; backdoor → **rollback** (last clean checkpoint at least one window before the incident began, then quarantine); accumulative → **retrain** (oldest clean checkpoint = the starting model, then quarantine); label-flip → **quarantine** (the suspicious pair + very surprising labels); harmless shift → **escalate** once (no data deleted). One action per incident; an incident ends after 2 clean windows. Quarantine: label-flip drops the suspicious pair and surprising labels; other types drop images flagged by the picture or label check.
-- [ ] 5.2 **Experiment 15** (`experiments/15_response_episodes.py`, MLflow experiment `mlecho-response`): burn-in SGD model, 400 online batches of 128, onset at batch 100; policies none / rules / quarantine-everything; scenarios clean, backdoor 5%, label-flip cat→dog 5%, slow-drip 1 and 5 per batch, gradient matching, brighter ×1.3; episode seeds 0, 1, 2. Running.
-- [ ] 5.3 Figures (`figures_step05.py`), guides, close the step.
+- [x] 5.2 **Experiment 15** (`experiments/15_response_episodes.py`, MLflow `mlecho-response`, RESULTS exp 15). Development seed 0 led to better quarantine masks (target label, label-mix pair; rule table unchanged); final seeds 1–3 run once: rules bring backdoor / slow-drip ASR from 97–100% to 1.2–1.4% (recovered 20–100 batches after the onset), label-flip cats-called-dog 47% → 20% (partial), 0 false actions on clean, harmless change escalated with 0 images deleted. Quarantine-everything leaves backdoor ASR at 69.5% and deletes 2,331 good images on the brightness change. Gradient matching never detected. Cost: 3.3–4.1% of clean images left out. For step 7: label-flip is where a learned policy could beat the rules.
+- [x] 5.3 Figures (`experiments/figures_step05.py` → `local-docs/figures/step05-1…4`; also prints recovery times), guides, step closed.
 
 - One interface: `decide(state) -> Action`, with Action in {continue, quarantine, rollback, retrain, escalate}.
 - Rule table is fixed before evaluation. Low confidence → escalate.

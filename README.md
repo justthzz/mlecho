@@ -2,7 +2,7 @@
 
 **A Real-Time CNN-VAE and Reinforcement Learning Framework for Detecting and Responding to Training Data Poisoning in MLOps Pipelines.**
 
-> ⚠️ **Work in progress.** MLEcho is being built as a Final Year Project (FYP). Detection and attack classification are built and evaluated as research code; the response module and the `Guard` API are not built yet. See [Status](#status).
+> ⚠️ **Work in progress.** MLEcho is being built as a Final Year Project (FYP). Detection, attack classification and the rule-based response are built and evaluated as research code; the `Guard` API is being finished. See [Status](#status).
 
 ## What is MLEcho?
 
@@ -31,7 +31,7 @@ pip install mlecho
 | Poisoning attacks | ✅ all 4 built and tested: backdoor (attack success rate 99.96%), label-flip (cat accuracy 69% → 19%), accumulative (Pang et al. partially reproduced; slow-drip version: ASR 98% with 1 poisoned image per batch), gradient-based (Witches' Brew: 3 of 4 near targets fooled, clean-label) |
 | CNN-VAE detector and label check | ✅ built and evaluated: picture check catches the backdoor (AUC 0.994; 88% of poisoned images at 1% false alarms) and slow-drip; label pattern check catches label-flips between distinct classes; gradient matching and cat→dog not detected; false alarms under harmless data changes measured |
 | Attack-type classifier | ✅ built and evaluated: trained only on made-up attacks, names the real backdoor (86.5%), label-flip (98%) and slow-drip (76.5–99%) and calls 97% of clean windows clean; also tells harmless data changes apart; gradient matching can't be classified (not detected) |
-| Rule-based response and actions | ⬜ not started |
+| Rule-based response and actions | ✅ built and evaluated in live training episodes: backdoor and slow-drip success drops from 97–100% to ~1% (clean level) within 20–100 batches; label-flip damage halved; no false actions on clean data; harmless changes escalated to a human, never deleted |
 | `Guard` library API and MLflow event logging | ⬜ not started |
 | PPO response agent | ⬜ not started |
 
