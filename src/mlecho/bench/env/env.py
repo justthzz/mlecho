@@ -13,7 +13,8 @@ the test set), with knowledge only the practice world has (the attack):
     reward = - effect   x (attack effect above the start)
              - accuracy x (clean accuracy drop since the start)
              - data     x (share of clean images left out in the window)
-             - the action's own cost (rollback, retrain; escalating when nothing happened)
+             - the action's own cost (rollback, retrain: training to redo)
+             - a false-alarm cost for any action but continue when nothing happened
 
 Attack effect: the share of triggered images the model calls the trigger's
 target (backdoor, slow-drip), or the share of the flipped class it calls the
@@ -44,14 +45,16 @@ ACTIONS = list(Action)
 
 @dataclass(frozen=True)
 class RewardWeights:
-    """Fixed before training (ROADMAP step 7)."""
+    """Fixed before PPO training (ROADMAP step 7; revised once after the sanity check
+    of experiment 19: with rollback and retrain at 0.02, random actions beat the rules
+    by resetting the model again and again)."""
 
     effect: float = 1.0
     accuracy: float = 1.0
     data: float = 1.0
-    rollback: float = 0.02
-    retrain: float = 0.02
-    false_escalation: float = 0.1  # a human's time, wasted when nothing happened
+    rollback: float = 0.1  # recent training to redo
+    retrain: float = 0.3  # all training to redo
+    false_alarm: float = 0.1  # any action but continue when nothing happened
 
 
 class _ReplayMonitor(Monitor):
@@ -232,8 +235,8 @@ class ResponseEnv(gym.Env):
         accuracy_drop = max(0.0, self.start_accuracy - accuracy)
         data_loss = self._window_clean_dropped / max(1, self._window_images)
         cost = {Action.ROLLBACK: w.rollback, Action.RETRAIN: w.retrain}.get(action, 0.0)
-        if action == Action.ESCALATE and not attacked:
-            cost += w.false_escalation
+        if action != Action.CONTINUE and not attacked:
+            cost += w.false_alarm
         reward = -(w.effect * effect_rise + w.accuracy * accuracy_drop + w.data * data_loss) - cost
         info = {
             "effect": effect,
