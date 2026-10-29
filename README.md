@@ -21,7 +21,7 @@ MLEcho monitors training batches as they stream through an MLOps pipeline and fl
 pip install mlecho
 ```
 
-> On [PyPI](https://pypi.org/project/mlecho/) there is only 0.0.1, an early placeholder. Version 0.1.0 (the `Guard` below) is not published yet, so for now install from source (see [Development](#development)).
+> [MLEcho on PyPI](https://pypi.org/project/mlecho/). Version 0.1.0 has detection, the attack classifier, the rule-based response and the `Guard` below. The PPO response agent will come in a later version. MLflow logging is optional: `pip install "mlecho[mlflow]"`.
 
 ## Usage
 
