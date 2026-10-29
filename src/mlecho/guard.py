@@ -65,7 +65,7 @@ class _Incident:
     """Bookkeeping between windows (one incident = a run of suspicious windows)."""
 
     streak: int = 0
-    start: int = 0
+    safe_before: int = 0  # rollback target: a clean checkpoint at or before this batch
     clean_streak: int = 0
     active: bool = False
     acted: bool = False
@@ -105,6 +105,7 @@ class Guard:
         self.check_every = check_every
         self._in_window = 0  # scored batches in the current window
         self._window_start = 0  # batches trained before the current window began
+        self._previous_window_start = 0  # the same, for the window before it
 
     # ---------- during training ----------
 
@@ -160,6 +161,7 @@ class Guard:
         state = self._next_state(verdict)
         action = self.policy.decide(state)
         self._carry_out(action, verdict)
+        self._previous_window_start = self._window_start
         if self.model is not None:
             self.checkpoints.save(
                 self.model, self.optimizer, self.batches, clean=verdict.attack_type == "clean"
@@ -180,7 +182,9 @@ class Guard:
             same = verdict.attack_type == incident.last_type
             incident.streak = incident.streak + 1 if same else 1
             if not incident.active:  # first suspicious window: remember where it began
-                incident.active, incident.start = True, self._window_start
+                # A window can hold poison while still looking clean (the attack may
+                # start mid-window), so the safe point is before the previous window.
+                incident.active, incident.safe_before = True, self._previous_window_start
         incident.last_type = verdict.attack_type
         mean_loss = float(np.mean([float(x) for x in incident.losses])) if incident.losses else 0.0
         previous = incident.previous_loss
@@ -198,7 +202,7 @@ class Guard:
     def _carry_out(self, action: Action, verdict: Verdict) -> None:
         if action in (Action.ROLLBACK, Action.RETRAIN) and self.model is not None:
             checkpoint = (
-                self.checkpoints.last_clean(before=self._incident.start - self.monitor.window)
+                self.checkpoints.last_clean(before=self._incident.safe_before)
                 if action == Action.ROLLBACK
                 else self.checkpoints.oldest_clean()
             )

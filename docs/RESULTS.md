@@ -227,6 +227,27 @@ Runs: run 1 `faef6394` (SmallCNN) / `b58ab3fa` (ResNet-18) (an earlier SmallCNN 
 
 Finding: running **both checks on every batch costs ~20–25%**, far above the 5% target; most of it is the label check (~15–25%). The picture check alone costs ~3–11%. Checking only every 8th batch brings both checks to **~3.5–8%**. Measurements on this shared laptop vary by about ±5 points between runs, so the 5% target is met only by sampled checking and must be re-measured on an idle machine for the final report. ResNet-18 is only ~2× slower per batch than SmallCNN here because CPU data loading dominates, so a bigger victim doesn't shrink the relative overhead as much as expected. Design consequence: the guard needs a `check_every` setting (picture check frequently, label check on sampled batches, which suits its window-level pattern test).
 
+### Experiment 10, step 6 re-measurement: the whole Guard, on an idle machine
+
+`python experiments/10_detection_overhead.py --no-augment [--victim resnet18]` · runs `f11b0ae2` (SmallCNN) and `aa075621` (ResNet-18); 5 interleaved rounds of 200 batches, fastest run per setting (fastest and median agree within ~2 points here except for ResNet-18 Guard every batch, so the machine was quiet).
+
+New setting: **the whole MLEcho Guard** as a user runs it (`Guard.load` of experiment 16's guard; `filter` before and `update(loss)` after every step: 5 fold VAEs and reference models, the verdict, the policy and a checkpoint every window). `check_every = n` scores only every n-th batch while nothing is suspicious; once a window looks suspicious or a quarantine is on, every batch is scored.
+
+| Setting | SmallCNN (no checks: 42.6 ms/batch) | ResNet-18 (64.2 ms/batch) |
+|---|---|---|
+| picture check, every batch | +6.1% | +4.0% |
+| label check, every batch | +17.7% | +11.6% |
+| both checks, every batch | +23.9% | +15.4% |
+| both checks, every 8th batch | +2.8% | +1.9% |
+| **Guard, every batch** | +73.9% | +55.5% |
+| **Guard, every 4th quiet batch** | +18.8% | +13.3% |
+| **Guard, every 8th quiet batch** | +9.2% | +6.5% |
+| **Guard, every 16th quiet batch** | **+4.9%** | **+4.7%** |
+
+Development history (honest): the first Guard measurement (`cd88c4d3`, `d8fe6935`) used augmented batches; random shifts and flips look like a "harmless shift" to the picture check, so the guard stayed on alert and scored every batch (+66% even at every 8th). Rule since then (Guard docstring, README): **check batches before augmentation**. The second (`9b06cf16`, `111ba6ef`, no augmentation) still cost +29% at every 8th, because every quiet batch made the loop wait for the GPU (`loss.item()` and a mask copy). After `Guard.filter` (no copy while no quarantine) and reading the loss only at a window's end, the numbers above. Scoring itself was also made faster with identical results (one copy back per batch: 41 → 29 ms per batch of 128).
+
+Finding: the full guard on every batch costs 55–74% (scoring every image with its fold models dominates), so **NFR-P1 (< 5%) is met only with sampled checking, `check_every = 16`** (4.7–4.9%), and only in quiet times: during an incident every batch is scored. The price is a later first alarm (experiment 15, sampled runs).
+
 ## Experiment 11: false alarms under legitimate change (step 3.6)
 
 `python experiments/11_false_alarms_under_shift.py` · MLflow experiment `mlecho-detection` · run `7bbc3de8`

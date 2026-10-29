@@ -151,3 +151,25 @@ def test_filter_returns_the_same_batch_until_a_quarantine_starts(tmp_path):
     assert guard.update(loss) == Action.ROLLBACK
     kept, kept_labels = guard.filter(images, targets)
     assert len(kept) == len(kept_labels) == int(guard.check(images, targets).sum())
+
+
+def test_sampled_windows_remember_where_the_previous_window_began(tmp_path):
+    raw, labels = _trusted()
+    path = tmp_path / "guard.pt"
+    Guard.calibrate(raw, labels, 10, DEVICE, TINY).save(path)
+
+    class _Never:
+        def decide(self, state):
+            return Action.CONTINUE
+
+    guard = Guard.load(path, DEVICE, policy=_Never(), check_every=3)
+    images, targets = torch.randn(16, 3, 32, 32), torch.arange(16) % 10
+    starts = []
+    for _ in range(18):
+        guard.check(images, targets)
+        guard._incident.active = False  # keep it quiet, so sampling stays on
+        if guard.update(0.0) is not None:
+            starts.append(guard._previous_window_start)
+    # Scored: batches 1, 4, 7, 10, 13, 16; windows of 2 begin after 0, 6 and 12 batches.
+    # A rollback goes back before the previous window, not just 2 batches.
+    assert starts == [0, 6, 12]
