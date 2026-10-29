@@ -186,3 +186,18 @@ def test_update_without_check_adds_no_batch_to_the_window(tmp_path):
     assert guard.update(0.0) is None  # no check: the old evidence is not counted again
     guard.check(images, targets)
     assert guard.update(0.0) is not None  # the window's second checked batch
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        (lambda raw, labels: (raw.transpose(0, 3, 1, 2), labels), "shaped"),
+        (lambda raw, labels: (raw, labels[:-1]), "labels"),
+        (lambda raw, labels: (raw, labels + 1), "0..9"),
+        (lambda raw, labels: (raw[:20], labels[:20]), "at least"),
+    ],
+)
+def test_calibrate_explains_wrong_trusted_data(change, message):
+    raw, labels = change(*_trusted())
+    with pytest.raises(ValueError, match=message):
+        Guard.calibrate(raw, labels, 10, DEVICE, TINY)

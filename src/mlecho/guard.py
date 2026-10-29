@@ -236,6 +236,7 @@ class Guard:
         Trains the fold models, measures the calibration, makes up attacks on the
         trusted images and trains the attack classifier on them (steps 3-4).
         """
+        _check_trusted(raw, labels, num_classes, config)
         generator = torch.Generator().manual_seed(config.seed)
         rng = np.random.default_rng(config.seed)
         normalise = _normaliser(config)
@@ -335,6 +336,24 @@ class Guard:
             config.seed,
         )
         return cls(monitor, policy, loggers, config, check_every)
+
+
+def _check_trusted(raw: np.ndarray, labels: np.ndarray, num_classes: int, config) -> None:
+    """Clear errors for the most likely mistakes, before minutes of training."""
+    channels = len(config.pixel_mean)
+    if raw.ndim != 4 or raw.shape[-1] != channels:
+        raise ValueError(
+            f"trusted images must be raw pixels shaped (N, H, W, {channels}), got {raw.shape}"
+        )
+    if len(labels) != len(raw):
+        raise ValueError(f"{len(raw)} images but {len(labels)} labels")
+    if labels.min() < 0 or labels.max() >= num_classes:
+        raise ValueError(f"labels must be in 0..{num_classes - 1}")
+    if len(raw) < config.folds * config.batch_size:
+        raise ValueError(
+            f"need at least folds x batch_size = {config.folds * config.batch_size} "
+            f"trusted images, got {len(raw)}"
+        )
 
 
 def _normaliser(config: GuardConfig):
