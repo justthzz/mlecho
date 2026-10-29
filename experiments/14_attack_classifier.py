@@ -22,7 +22,6 @@ View:  mlflow ui --port 5050   (then open http://127.0.0.1:5050)
 """
 
 import argparse
-from types import SimpleNamespace
 
 import mlflow
 import numpy as np
@@ -40,13 +39,9 @@ from mlecho.attacks.backdoor import BackdoorConfig, add_trigger, poison_train_se
 from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
 from mlecho.bench.datasets import get_cifar10_datasets
 from mlecho.classification.classifier import ATTACK_TYPES, AttackClassifier, fit_classifier
-from mlecho.classification.features import FEATURES, calibrate, stream_rows, window_features
-from mlecho.classification.synthetic import (
-    apply_shift,
-    random_backdoor,
-    random_flip,
-    random_shift,
-)
+from mlecho.classification.features import FEATURES, calibrate, window_features
+from mlecho.classification.monitor import Evidence
+from mlecho.classification.training_data import made_up_set, made_up_settings, overlay
 from mlecho.core import get_device, save_weights, seed_everything
 
 TEST_FLIPS = ((3, 5), (4, 7), (9, 1), (0, 2))  # cat->dog (the attack), then experiment 09's pairs
@@ -99,73 +94,6 @@ def features(evidence, labels, rows, batches, calibration) -> torch.Tensor:
     )
 
 
-def overlay(base, poison, mask, rows) -> SimpleNamespace:
-    """Evidence of the window `rows`, with the images where `mask` is True replaced
-    by their poisoned version (`poison`, indexed like `base`)."""
-    picture, log_probs = base.picture[rows].clone(), base.log_probs[rows].clone()
-    picture[mask], log_probs[mask] = poison.picture[rows[mask]], poison.log_probs[rows[mask]]
-    return SimpleNamespace(picture=picture, log_probs=log_probs)
-
-
-def made_up_window(kind, trusted, labels, settings, rng, generator, args, calibration):
-    """One made-up window of type `kind` from the trusted images (see module docstring)."""
-    batches, size = args.window, args.window * args.batch_size
-    rows = stream_rows(len(labels), size, generator)
-    lab = labels[rows].clone()
-    evidence = SimpleNamespace(picture=trusted.picture[rows], log_probs=trusted.log_probs[rows])
-    if kind == "backdoor":  # a share of the dataset carries the trigger
-        config, stamped = settings.triggers[rng.integers(len(settings.triggers))]
-        mask = (torch.rand(size, generator=generator) < rng.uniform(0.02, 0.10)) & (
-            lab != config.target_class
-        )
-        evidence, lab[mask] = overlay(trusted, stamped, mask, rows), config.target_class
-    elif kind == "accumulative":  # a fixed few triggered images in every batch
-        config, stamped = settings.triggers[rng.integers(len(settings.triggers))]
-        mask = torch.zeros(batches, args.batch_size, dtype=torch.bool)
-        mask[:, : rng.integers(1, 7)] = True
-        mask = mask.flatten()
-        others = torch.as_tensor(np.flatnonzero(labels.numpy() != config.target_class))
-        rows = rows.clone()
-        rows[mask] = others[torch.randint(len(others), (int(mask.sum()),), generator=generator)]
-        evidence, lab = overlay(trusted, stamped, mask, rows), labels[rows].clone()
-        lab[mask] = config.target_class
-    elif kind == "label_flip":  # some images of one class get another class's label
-        source, target = random_flip(rng, 10, settings.excluded)
-        share = rng.uniform(0.01, 0.05) / (labels == source).float().mean().item()
-        lab[(lab == source) & (torch.rand(size, generator=generator) < share)] = target
-    elif kind == "benign_shift":  # part or all of the data changed in a harmless way
-        _, changed = settings.shifts[rng.integers(len(settings.shifts))]
-        mask = torch.rand(size, generator=generator) < rng.uniform(0.3, 1.0)
-        evidence = overlay(trusted, changed, mask, rows)
-    whole = torch.arange(size)
-    return features(evidence, lab, whole, batches, calibration)
-
-
-def made_up_set(trusted, labels, settings, windows, rng, generator, args, calibration):
-    """`windows` made-up windows of every type -> (features, type numbers)."""
-    x, y = [], []
-    for t, kind in enumerate(ATTACK_TYPES):
-        for _ in range(windows):
-            x.append(
-                made_up_window(kind, trusted, labels, settings, rng, generator, args, calibration)
-            )
-            y.append(t)
-    return torch.stack(x), torch.tensor(y)
-
-
-def made_up_settings(score, raw, which, count, rng, excluded) -> SimpleNamespace:
-    """`count` random triggers and harmless shifts, with the trusted images' evidence."""
-    triggers = []
-    for _ in range(count):
-        config = random_backdoor(rng, raw.shape[1], 10)
-        triggers.append((config, score(add_trigger(raw, config), which)))
-    shifts = []
-    for _ in range(count):
-        shift = random_shift(rng)
-        shifts.append((shift, score(apply_shift(raw, shift), which)))
-    return SimpleNamespace(triggers=triggers, shifts=shifts, excluded=excluded)
-
-
 def report(name, predicted, expected) -> dict[str, float]:
     """Share of windows given each type; `correct` if an expected type is given."""
     shares = {t: (predicted == i).float().mean().item() for i, t in enumerate(ATTACK_TYPES)}
@@ -201,11 +129,13 @@ def main() -> None:
     )
 
     excluded = {pair for s, t in TEST_FLIPS for pair in ((s, t), (t, s))}
-    train_settings = made_up_settings(
-        score, trusted_raw, fold_of_trusted, args.configs, rng, excluded
-    )
+
+    def score_trusted(raw):
+        return score(raw, fold_of_trusted)
+
+    train_settings = made_up_settings(score_trusted, trusted_raw, 10, args.configs, rng, excluded)
     check_settings = made_up_settings(
-        score, trusted_raw, fold_of_trusted, args.configs // 4, rng, excluded
+        score_trusted, trusted_raw, 10, args.configs // 4, rng, excluded
     )
     print("made-up attacks scored")
 
@@ -226,11 +156,12 @@ def main() -> None:
             trusted,
             trusted_labels,
             train_settings,
+            calibration,
             args.train_windows,
+            args.window,
+            args.batch_size,
             rng,
             generator,
-            args,
-            calibration,
         )
         if args.model == "softmax":
             model = AttackClassifier(len(FEATURES))
@@ -252,11 +183,12 @@ def main() -> None:
             trusted,
             trusted_labels,
             check_settings,
+            calibration,
             args.check_windows,
+            args.window,
+            args.batch_size,
             rng,
             generator,
-            args,
-            calibration,
         )
         check_pred = probabilities(cx).argmax(dim=1)
         check_accuracy = (check_pred == cy).float().mean().item()
@@ -290,7 +222,7 @@ def main() -> None:
         true = torch.as_tensor(targets[data.train])
         yellow = score(add_trigger(train_raw, BackdoorConfig()), which)
         checker = score(add_trigger(train_raw, CHECKER), which)
-        gm = SimpleNamespace(picture=clean.picture.clone(), log_probs=clean.log_probs.clone())
+        gm = Evidence(clean.picture.clone(), clean.log_probs.clone())
         gm_scored = score(data.gm_pixels, which[data.gradient_matching])
         gm.picture[data.gradient_matching] = gm_scored.picture
         gm.log_probs[data.gradient_matching] = gm_scored.log_probs
@@ -323,9 +255,7 @@ def main() -> None:
             for _ in range(args.test_windows):
                 rows = torch.randint(len(labels), (window_size,), generator=generator)
                 lab = labels[rows].clone()
-                window = SimpleNamespace(
-                    picture=evidence.picture[rows], log_probs=evidence.log_probs[rows]
-                )
+                window = Evidence(evidence.picture[rows], evidence.log_probs[rows])
                 if per_batch:
                     mask = torch.zeros(args.window, args.batch_size, dtype=torch.bool)
                     mask[:, :per_batch] = True

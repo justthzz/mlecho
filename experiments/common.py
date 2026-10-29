@@ -17,11 +17,14 @@ from mlflow.tracking import MlflowClient
 from torch import nn
 from torch.utils.data import DataLoader
 
-from mlecho.attacks.backdoor import BackdoorConfig, poison_train_set
+from mlecho.attacks.backdoor import BackdoorConfig, add_trigger, poison_train_set
 from mlecho.attacks.labelflip import LabelFlipConfig, flip_labels
 from mlecho.bench.datasets import get_cifar10_datasets, normalise
 from mlecho.bench.evaluation import alarm_rates, image_metrics, simulate_flag_counts
+from mlecho.bench.stream import Scenario
 from mlecho.bench.training import evaluate, train_one_epoch
+from mlecho.classification.monitor import Evidence
+from mlecho.classification.synthetic import Shift, apply_shift
 from mlecho.core import load_weights
 from mlecho.detection.label_check import ReferenceCNN, label_scores
 from mlecho.detection.thresholds import count_threshold, score_threshold
@@ -329,12 +332,89 @@ class FoldScorer:
         ]
         self.patch, self.device = patch, device
 
-    def __call__(self, raw: np.ndarray, which: np.ndarray) -> SimpleNamespace:
+    def __call__(self, raw: np.ndarray, which: np.ndarray) -> Evidence:
         """Evidence of raw image k from fold models `which[k]`."""
-        return SimpleNamespace(
+        return Evidence(
             picture=fold_picture_scores(self.vaes, raw, which, self.patch, self.device),
             log_probs=fold_log_probabilities(self.references, raw, which, self.device),
         )
+
+
+# ---------- step 5: live training episodes (experiments 15, 16) ----------
+
+GM_TARGET = 8183  # test cat the gradient-matching poisons push towards "dog" (experiment 06)
+
+
+class EpisodeMeasure:
+    """Clean accuracy, ASR, cat accuracy, cats called dog, and the target's P(dog)."""
+
+    def __init__(self, test_set, device, images: int | None, seed: int):
+        raw, labels = test_set.data, np.asarray(test_set.targets)
+        rows = np.arange(len(labels))
+        if images is not None:  # a fixed random subset, for the curves
+            rows = np.random.default_rng(seed).choice(len(labels), images, replace=False)
+        non_plane = rows[labels[rows] != 0]
+        cats = np.flatnonzero(labels == 3)
+        self.device = device
+        self.clean = (normalise(raw[rows]), torch.as_tensor(labels[rows]))
+        self.triggered = normalise(add_trigger(raw[non_plane], BackdoorConfig()))
+        self.cats = normalise(raw[cats if images is None else cats[: images // 2]])
+        self.target = normalise(raw[[GM_TARGET]])
+
+    @torch.no_grad()
+    def predict(self, model, images) -> torch.Tensor:
+        return torch.cat(
+            [model(chunk.to(self.device)).softmax(dim=1).cpu() for chunk in images.split(1000)]
+        )
+
+    def __call__(self, model) -> dict:
+        model.eval()
+        clean_images, clean_labels = self.clean
+        cats = self.predict(model, self.cats).argmax(dim=1)
+        return {
+            "clean_acc": (self.predict(model, clean_images).argmax(1) == clean_labels)
+            .float()
+            .mean()
+            .item(),
+            "asr": (self.predict(model, self.triggered).argmax(1) == 0).float().mean().item(),
+            "cat_acc": (cats == 3).float().mean().item(),
+            "cat_as_dog": (cats == 5).float().mean().item(),
+            "target_dog": self.predict(model, self.target)[0, 5].item(),
+        }
+
+
+def episode_scenarios(data, seed) -> dict[str, Scenario]:
+    """The training data after the onset, for every scenario."""
+    full, rows = data.full, data.train
+    raw, labels = full.data[rows], np.asarray(full.targets)[rows]
+    row_of = {position: k for k, position in enumerate(rows)}
+    none = np.zeros(len(rows), dtype=bool)
+    out = {"clean": Scenario("clean", raw, labels, none)}
+
+    view, _, _ = get_cifar10_datasets(seed=seed, augment=False)
+    chosen = [row_of[i] for i in poison_train_set(view, BackdoorConfig(), seed)]
+    mask = none.copy()
+    mask[chosen] = True
+    out["backdoor"] = Scenario(
+        "backdoor", view.dataset.data[rows], np.asarray(view.dataset.targets)[rows], mask
+    )
+
+    view, _, _ = get_cifar10_datasets(seed=seed, augment=False)
+    chosen = [row_of[i] for i in flip_labels(view, LabelFlipConfig(), seed)]
+    mask = none.copy()
+    mask[chosen] = True
+    out["label_flip"] = Scenario("label_flip", raw, np.asarray(view.dataset.targets)[rows], mask)
+
+    out["slow_drip_1"] = Scenario("slow_drip_1", raw, labels, none, drip=1)
+    out["slow_drip_5"] = Scenario("slow_drip_5", raw, labels, none, drip=5)
+
+    gm_raw, mask = raw.copy(), none.copy()
+    gm_raw[data.gradient_matching], mask[data.gradient_matching] = data.gm_pixels, True
+    out["gradient_matching"] = Scenario("gradient_matching", gm_raw, labels, mask)
+
+    brighter = apply_shift(raw, Shift("brightness", 1.3))
+    out["benign_brighter"] = Scenario("benign_brighter", brighter, labels, none)
+    return out
 
 
 # ---------- figures: shared by the figures_stepNN.py scripts ----------

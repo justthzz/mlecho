@@ -12,6 +12,7 @@ from mlecho.classification.features import FEATURES, calibrate
 from mlecho.classification.monitor import Evidence, Monitor, Verdict
 from mlecho.detection.label_check import ReferenceCNN
 from mlecho.detection.vae import ConvVAE
+from mlecho.guard import Guard
 from mlecho.response.base import Action, State
 from mlecho.response.rules import RULES, RulePolicy
 
@@ -131,8 +132,7 @@ def test_episode_runs_counts_poison_and_carries_out_actions():
         raw,
         labels,
         scenario,
-        _tiny_monitor(device),
-        _AlwaysRollback(),
+        Guard(_tiny_monitor(device), _AlwaysRollback()),
         batches=8,
         onset=2,
         batch_size=8,
