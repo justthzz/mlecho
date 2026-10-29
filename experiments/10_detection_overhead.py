@@ -3,7 +3,10 @@
 Times the victim's normal training (SmallCNN, or ResNet-18 with --victim
 resnet18; batches of 128, augmentation, Adam) for a fixed number of batches,
 with and without the detection checks running on each batch: the picture
-check (CNN-VAE, worst 4x4 patch) and the label check (one reference model).
+check (CNN-VAE, worst 4x4 patch) and the label check (one reference model),
+and the whole MLEcho Guard as a user runs it (`check` before and `update`
+after every step: 5 fold models, quarantine, a verdict, a policy decision and
+a checkpoint every 10 batches; saved by experiment 16).
 Each setting is repeated, interleaved with the others, so slow-downs of the
 machine affect all settings alike. Time includes data loading, as in real
 training. Other programs can only make a run slower, never faster, so each
@@ -27,6 +30,7 @@ from mlecho.bench.models import SmallCNN
 from mlecho.core import get_device, load_weights, seed_everything
 from mlecho.detection.label_check import ReferenceCNN, label_scores
 from mlecho.detection.vae import ConvVAE, reconstruction_scores
+from mlecho.guard import Guard
 
 SETTINGS = {  # name -> (run the picture check every n-th batch, label check every n-th); 0 = never
     "no checks": (0, 0),
@@ -36,6 +40,7 @@ SETTINGS = {  # name -> (run the picture check every n-th batch, label check eve
     "both checks, every 4th batch": (4, 4),
     "both checks, every 8th batch": (8, 8),
     "picture every batch, label every 8th": (1, 8),
+    "MLEcho Guard, every batch": "guard",
 }
 
 
@@ -48,6 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--victim", choices=["smallcnn", "resnet18"], default="smallcnn")
     parser.add_argument("--vae", default="data/checkpoints/vae-c16-z32-seed42.pt")
     parser.add_argument("--reference", default="data/checkpoints/reference-w32-seed42-fold0.pt")
+    parser.add_argument("--guard", default="data/checkpoints/guard-cifar10-seed42.pt")
     parser.add_argument("--mlflow-experiment", default="mlecho-detection")
     return parser.parse_args()
 
@@ -69,10 +75,15 @@ def make_victim(name: str) -> nn.Module:
 
 def timed_training(loader, device, vae, reference, setting, args) -> float:
     """Seconds for `args.batches` training steps with the given checks."""
+    guard = None
+    if setting == "guard":
+        guard, setting = Guard.load(args.guard, device), (0, 0)
     picture_every, label_every = setting
     seed_everything(args.seed)
     model = make_victim(args.victim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    if guard is not None:
+        guard.watch(model, optimizer)
     loss_fn = nn.CrossEntropyLoss()
     batches = iter(loader)
     model.train()
@@ -82,6 +93,9 @@ def timed_training(loader, device, vae, reference, setting, args) -> float:
             start = time.perf_counter()
         images, labels = next(batches)
         images, labels = images.to(device), labels.to(device)
+        if guard is not None:
+            keep = guard.check(images, labels)
+            images, labels = images[keep], labels[keep]
         if picture_every and step % picture_every == 0:
             reconstruction_scores(vae, images, patch=4)
         if label_every and step % label_every == 0:
@@ -90,6 +104,8 @@ def timed_training(loader, device, vae, reference, setting, args) -> float:
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        if guard is not None:
+            guard.update(loss.item())
     synchronize(device)
     return time.perf_counter() - start
 

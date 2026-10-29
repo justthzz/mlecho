@@ -366,3 +366,21 @@ Findings:
 4. **No false actions on clean data** (0 actions in 3 × 400 batches), and the harmless change is escalated, never acted on.
 5. **Gradient matching is never detected**, so nothing can respond; in this online setting it doubles the target's P(dog) (11.5% → 22.8%). Limit, consistent with H2.
 6. **Cost:** quarantine leaves out 1,260–1,570 clean images per episode (3.3–4.1% of the 38,400 images after the onset).
+
+## Experiment 16: the Guard end to end, as a user runs it (step 6)
+
+`python experiments/16_guard_end_to_end.py` · MLflow experiment `mlecho-guard` · run `88ac8138`
+
+Only the public API: `Guard.calibrate` on the 5,000 trusted images from scratch (its own random folds, fold models, calibration, 40 made-up triggers and shifts, classifier; independent of experiments 09–14), `save` (one 5.6 MB file), `Guard.load`, then the experiment 15 episodes (episode seed 1, rules policy) with an `AuditLog` file and an `MLflowLogger` per scenario. **Calibration took 11.9 min** on the M2 (picture threshold 2.73, surprise threshold 5.36).
+
+| Scenario | ASR | Cat accuracy | First action | Poison learned / clean images left out | Same scenario in exp 15 (rules, seed 1) |
+|---|---|---|---|---|---|
+| clean | 1.3% | 75.7% | none | 0 / 0 | 1.3%, none |
+| backdoor 5% | **1.4%** | 77.4% | rollback at batch 120 | 132 / 1,623 | 1.4%, rollback at 130 |
+| label-flip cat → dog | 1.0% | **56.9%** | quarantine at 120 | 695 / 1,273 | cat 51.0%, quarantine at 120 |
+| slow-drip 1 per batch | **2.2%** | 70.4% | retrain at 140 | 40 / 1,521 | 0.8%, retrain at 140 |
+| harmless brighter | 1.2% | 72.8% | escalate at 120 | 0 / 0 | escalate at 120 |
+
+Every episode wrote 40 events (one per window) to `data/audit/guard-<scenario>-seed1.jsonl` and to the MLflow run (per-window metrics `guard_<scenario>_confidence`, `_p_<type>`, `_alarm`; one tag per action; `guard_<scenario>_events.json`).
+
+Finding: a guard calibrated from scratch by the library behaves like the one assembled by hand in experiments 09–15: the same actions at the same times (±1 window), backdoor and slow-drip removed, no false actions, the harmless change escalated. The pip-installable `Guard` reproduces the research pipeline.

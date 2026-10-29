@@ -99,17 +99,22 @@ def fold_scores(
     chunk: int = 1000,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(picture scores (N,), log-probabilities (N, classes)) on the CPU; image k is
-    scored by fold models `which[k]`. `images` may be on the CPU or the models' device."""
+    scored by fold models `which[k]`. `images` may be on the CPU or the models' device.
+
+    The images are grouped by fold, each group is scored in chunks, and all
+    results come back to the CPU in one copy (each copy makes the CPU wait for
+    the GPU, so fewer copies is faster).
+    """
     device = next(vaes[0].parameters()).device
-    picture = torch.empty(len(images))
-    log_probs = None
+    which = which.cpu()
+    parts, outputs = [], []
     for f, (vae, reference) in enumerate(zip(vaes, references, strict=True)):
-        rows = torch.nonzero(which.cpu() == f).flatten()
-        for part in rows.split(chunk):
+        for part in torch.nonzero(which == f).flatten().split(chunk):
             batch = images[part.to(images.device)].to(device)
-            picture[part] = reconstruction_scores(vae.eval(), batch, patch).cpu()
-            scores = torch.log_softmax(reference.eval()(batch), dim=1).cpu()
-            if log_probs is None:
-                log_probs = torch.empty(len(images), scores.shape[1])
-            log_probs[part] = scores
-    return picture, log_probs
+            picture = reconstruction_scores(vae.eval(), batch, patch)
+            log_probs = torch.log_softmax(reference.eval()(batch), dim=1)
+            outputs.append(torch.cat([picture.unsqueeze(1), log_probs], dim=1))
+            parts.append(part)
+    scores = torch.empty(len(images), outputs[0].shape[1])
+    scores[torch.cat(parts)] = torch.cat(outputs).cpu()
+    return scores[:, 0].contiguous(), scores[:, 1:].contiguous()
