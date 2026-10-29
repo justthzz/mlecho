@@ -28,20 +28,23 @@ pip install mlecho
 ```python
 from mlecho import Guard, GuardConfig
 from mlecho.tracking.audit import AuditLog
-from mlecho.tracking.mlflow_logger import MLflowLogger   # needs mlecho[mlflow] and an active mlflow.start_run()
+from mlecho.tracking.mlflow_logger import MLflowLogger  # needs mlecho[mlflow]
 
 # Once: learn "normal" from your own trusted clean images (raw pixels, N x H x W x 3, 0-255).
-config = GuardConfig(pixel_mean=MEAN, pixel_std=STD)     # how your model normalises images
-guard = Guard.calibrate(trusted_images, trusted_labels, num_classes=10, device=device, config=config)
+config = GuardConfig(pixel_mean=MEAN, pixel_std=STD)  # how your model normalises images
+guard = Guard.calibrate(
+    trusted_images, trusted_labels, num_classes=10, device=device, config=config
+)
 guard.save("guard.pt")
 
 # Every training run:
+# (MLflowLogger logs into the active mlflow.start_run())
 guard = Guard.load("guard.pt", device, loggers=[AuditLog("audit.jsonl"), MLflowLogger()])
-guard.watch(model, optimizer)                 # enables rollback and retrain
-for images, labels in loader:                 # normalised, BEFORE random augmentation
-    images, labels = guard.filter(images, labels)   # leaves out quarantined images
+guard.watch(model, optimizer)  # enables rollback and retrain
+for images, labels in loader:  # normalised, BEFORE random augmentation
+    images, labels = guard.filter(images, labels)  # leaves out quarantined images
     loss = train_step(images, labels)
-    guard.update(loss)                        # every 10 batches: verdict, action, audit event
+    guard.update(loss)  # every 10 batches: verdict, action, audit event
 guard.close()
 ```
 
