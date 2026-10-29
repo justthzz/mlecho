@@ -2,7 +2,7 @@
 
 Build plan for the FYP. Update the status column and "Current step" when a step is finished.
 
-**Current step: 6 (library + MLflow)**, in progress
+**Current step: 7 (PPO)**, not started. Steps 1–6 are finished and re-verified.
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
@@ -11,7 +11,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 | 3 | Detector | ✅ picture check (backdoor AUC 0.994, 100% of windows) + label check (label pattern catches distinct-class flips; misses cat→dog, gradient matching); overhead, false alarms under shift and KS/PSI baselines measured | CNN-VAE picture check + label check, calibrated thresholds | RQ1 |
 | 4 | Classifier | ✅ softmax regression on 10 window features, trained only on made-up attacks: official backdoor 86.5%, label-flip 98%, slow-drip 76.5–99%, clean 97%; gradient matching unclassifiable | attack-type classifier on detector features | RQ2 |
 | 5 | Rules + actions | ✅ rule table + quarantine / rollback / retrain / escalate; live episodes (3 final seeds): trigger ASR 97–100% → 1.2–1.4%, label-flip halved, 0 false actions, harmless change escalated | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
-| 6 | Library + MLflow | ⬜ | `Guard.check(images, labels)`, event logging to MLflow | NFR-A1 |
+| 6 | Library + MLflow | ✅ `Guard` (calibrate / save / load / watch / filter / update / close) reproduces exp 15 from scratch (11.9 min calibration, 5.6 MB file); JSONL audit + MLflow event logging; `check_every=16` gives +4.7–4.9% overhead with the same protection | `Guard` API, event logging to MLflow | NFR-A1, NFR-P1 |
 | 7 | PPO | ⬜ | Gymnasium env, PPO agent behind the same interface as the rules | RQ4 |
 | 8 | Evaluation | ⬜ | all comparisons, overhead benchmark (<5%), results tables and figures | RQ1–RQ4, NFR-P1 |
 
@@ -136,6 +136,12 @@ Notes:
 ### 6. Library (`src/mlecho/guard.py`, `src/mlecho/tracking/`)
 - `Guard` wraps detector + classifier + policy + executor.
 - Every event goes to MLflow (metrics, tags, a JSON audit log). MLflow stays an optional extra.
+- [x] 6.1 **Refactor into the library**: made-up windows → `classification/training_data.py`; fold training/scoring → `detection/folds.py`; incident bookkeeping → `guard.py`. Experiments 14 and 15 re-run: identical (`32b43b58`, `054b26d4`).
+- [x] 6.2 **`Guard`** (`guard.py`): `calibrate` (folds, fold models, calibration, made-up attacks, classifier), `save`/`load` (one file, `weights_only=True`), `watch`, `check`/`filter`, `update(loss)`, `close`.
+- [x] 6.3 **Tracking** (`tracking/`): `AuditLog` (JSON lines, no extra packages), `MLflowLogger` (per-window metrics, action tags, event list; lazy import).
+- [x] 6.4 **End to end** (exp 16, `88ac8138`): calibrated from scratch through the public API only, reproduces exp 15's actions and results.
+- [x] 6.5 **Overhead** re-measured on an idle machine (exp 10, `f11b0ae2`, `aa075621`): every batch +56–74%; `check_every=16` +4.7–4.9% (NFR-P1 met in quiet times). Lessons: check before augmentation; avoid GPU syncs (`filter`, lazy loss).
+- [x] 6.6 **Sampled episodes** (exp 15 sampled, every 4th and 16th, seeds 1–3): same protection (ASR 1.4–1.8%), first action later (55–245 batches after onset at every 16th). Found and fixed a rollback bug with sampling (`c5138b9`); default mode re-verified identical (`587be1f6`).
 - Proposal deliverables still to plan: **Weights & Biases** live dashboard and **Docker** one-command packaging (RO4, section 1.12). Either build them here and in step 8, or agree with the supervisor to drop them.
 
 ### 7. PPO (`src/mlecho/response/ppo.py`, `src/mlecho/bench/env/`)

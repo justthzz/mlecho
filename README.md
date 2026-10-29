@@ -59,7 +59,7 @@ Each window of 10 batches gets a verdict (clean, backdoor, label-flip, accumulat
 | CNN-VAE detector and label check | ✅ built and evaluated: picture check catches the backdoor (AUC 0.994; 88% of poisoned images at 1% false alarms) and slow-drip; label pattern check catches label-flips between distinct classes; gradient matching and cat→dog not detected; false alarms under harmless data changes measured |
 | Attack-type classifier | ✅ built and evaluated: trained only on made-up attacks, names the real backdoor (86.5%), label-flip (98%) and slow-drip (76.5–99%) and calls 97% of clean windows clean; also tells harmless data changes apart; gradient matching can't be classified (not detected) |
 | Rule-based response and actions | ✅ built and evaluated in live training episodes: backdoor and slow-drip success drops from 97–100% to ~1% (clean level) within 20–100 batches; label-flip damage halved; no false actions on clean data; harmless changes escalated to a human, never deleted |
-| `Guard` library API and MLflow event logging | ⬜ not started |
+| `Guard` library API and MLflow event logging | ✅ built and evaluated: `Guard.calibrate` learns everything from your own trusted images (~12 min on an M2), saves to one file and reproduces the research results; every window is logged to a JSON audit file and MLflow; checking every 16th quiet batch keeps the overhead under 5% with the same protection |
 | PPO response agent | ⬜ not started |
 
 Detailed plan: [docs/ROADMAP.md](docs/ROADMAP.md). Results so far: [docs/RESULTS.md](docs/RESULTS.md).
