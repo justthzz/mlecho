@@ -173,3 +173,16 @@ def test_sampled_windows_remember_where_the_previous_window_began(tmp_path):
     # Scored: batches 1, 4, 7, 10, 13, 16; windows of 2 begin after 0, 6 and 12 batches.
     # A rollback goes back before the previous window, not just 2 batches.
     assert starts == [0, 6, 12]
+
+
+def test_update_without_check_adds_no_batch_to_the_window(tmp_path):
+    raw, labels = _trusted()
+    path = tmp_path / "guard.pt"
+    Guard.calibrate(raw, labels, 10, DEVICE, TINY).save(path)
+    guard = Guard.load(path, DEVICE)
+    images, targets = torch.randn(16, 3, 32, 32), torch.arange(16) % 10
+    guard.check(images, targets)
+    assert guard.update(0.0) is None
+    assert guard.update(0.0) is None  # no check: the old evidence is not counted again
+    guard.check(images, targets)
+    assert guard.update(0.0) is not None  # the window's second checked batch

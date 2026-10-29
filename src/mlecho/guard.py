@@ -155,6 +155,7 @@ class Guard:
             self._window_start = self.batches - 1
         self._in_window += 1
         verdict = self.monitor.add(*self._evidence)
+        self._evidence = None  # each checked batch counts once
         if verdict is None:
             return None
         self._in_window = 0
