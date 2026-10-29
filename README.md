@@ -21,7 +21,31 @@ MLEcho monitors training batches as they stream through an MLOps pipeline and fl
 pip install mlecho
 ```
 
-> The release on PyPI (0.0.1) is a placeholder: `mlecho.detect()` raises `NotImplementedError`. To use the current code, install from source (see [Development](#development)).
+> The release on PyPI (0.0.1) is an old placeholder. Version 0.1.0 (the `Guard` below) is not published yet: install from source (see [Development](#development)).
+
+## Usage
+
+```python
+from mlecho import Guard, GuardConfig
+from mlecho.tracking.audit import AuditLog
+from mlecho.tracking.mlflow_logger import MLflowLogger   # needs mlecho[mlflow] and an active mlflow.start_run()
+
+# Once: learn "normal" from your own trusted clean images (raw pixels, N x H x W x 3, 0-255).
+config = GuardConfig(pixel_mean=MEAN, pixel_std=STD)     # how your model normalises images
+guard = Guard.calibrate(trusted_images, trusted_labels, num_classes=10, device=device, config=config)
+guard.save("guard.pt")
+
+# Every training run:
+guard = Guard.load("guard.pt", device, loggers=[AuditLog("audit.jsonl"), MLflowLogger()])
+guard.watch(model, optimizer)                 # enables rollback and retrain
+for images, labels in loader:                 # normalised images
+    keep = guard.check(images, labels)        # False = left out (quarantine)
+    loss = train_step(images[keep], labels[keep])
+    guard.update(loss)                        # every 10 batches: verdict, action, audit event
+guard.close()
+```
+
+Each window of 10 batches gets a verdict (clean, backdoor, label-flip, accumulative or harmless shift, with a confidence), and the rule-based policy chooses continue, quarantine, rollback, retrain or escalate. `check_every=n` scores only every n-th batch while nothing looks suspicious, to save time.
 
 ## Status
 
