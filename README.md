@@ -2,7 +2,7 @@
 
 **A Real-Time CNN-VAE and Reinforcement Learning Framework for Detecting and Responding to Training Data Poisoning in MLOps Pipelines.**
 
-> ⚠️ **Work in progress.** MLEcho is being built as a Final Year Project (FYP). Detection, attack classification and the rule-based response are built and evaluated as research code; the `Guard` API is being finished. See [Status](#status).
+> ⚠️ **Work in progress.** MLEcho is being built as a Final Year Project (FYP). Detection, attack classification, the rule-based response and the `Guard` API are built and evaluated; the PPO response agent is next. See [Status](#status).
 
 ## What is MLEcho?
 
@@ -62,7 +62,7 @@ Each window of 10 batches gets a verdict (clean, backdoor, label-flip, accumulat
 | `Guard` library API and MLflow event logging | ✅ built and evaluated: `Guard.calibrate` learns everything from your own trusted images (~12 min on an M2), saves to one file and reproduces the research results; every window is logged to a JSON audit file and MLflow; checking every 16th quiet batch keeps the overhead under 5% with the same protection |
 | PPO response agent | ⬜ not started |
 
-Detailed plan: [docs/ROADMAP.md](docs/ROADMAP.md). Results so far: [docs/RESULTS.md](docs/RESULTS.md).
+Detailed plan: [docs/ROADMAP.md](https://github.com/justthzz/mlecho/blob/main/docs/ROADMAP.md). Results so far: [docs/RESULTS.md](https://github.com/justthzz/mlecho/blob/main/docs/RESULTS.md).
 
 ## Development
 
@@ -75,8 +75,8 @@ python experiments/01_clean_baseline.py                        # clean CIFAR-10 
 mlflow ui --port 5050                                          # view results at http://127.0.0.1:5050
 ```
 
-Code layout and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Code layout and rules: [docs/ARCHITECTURE.md](https://github.com/justthzz/mlecho/blob/main/docs/ARCHITECTURE.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/justthzz/mlecho/blob/main/LICENSE).
