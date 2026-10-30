@@ -24,7 +24,9 @@ mlecho/
 │   │   ├── stream.py    live training episodes with an attack onset      (step 5)
 │   │   ├── baselines/   PSI/KS drift detector (step 3); NoResponse and
 │   │   │                QuarantineEverything response baselines           (step 5)
-│   │   └── env/         Gymnasium practice world for training PPO        (step 7)
+│   │   └── env/         practice world for training PPO                  (step 7)
+│   │                    practice.py (made-up attack streams, evidence cache),
+│   │                    env.py (ResponseEnv: Gymnasium, replays a real Guard)
 │   │
 │   │  ── the guard: what a real user runs ──
 │   ├── detection/       CNN-VAE picture check + label check              (step 3)
@@ -35,7 +37,7 @@ mlecho/
 │   │                    (made-up attacks), training_data.py (made-up
 │   │                    windows), classifier.py, monitor.py (live verdicts)
 │   ├── response/        base.py (Action, State, interface), rules.py,     (step 5)
-│   │                    ppo.py                                           (step 7)
+│   │                    ppo.py (observation, PPOPolicy)                  (step 7)
 │   ├── actions/         checkpoints.py (rollback, retrain), quarantine.py (step 5)
 │   ├── tracking/        audit.py (JSON lines), mlflow_logger.py           (step 6)
 │   └── guard.py         Guard: the one object users touch                (step 6)
