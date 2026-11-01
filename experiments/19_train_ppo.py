@@ -15,7 +15,14 @@ PPO with 2 x 64 hidden units, 512 steps per update, gamma 0.95 (a window's
 consequences matter for ~20 windows), entropy bonus 0.01, the rest
 Stable-Baselines3 defaults; 24,000 steps (~600 practice episodes).
 
+`--imitate` (second run, see ROADMAP 7.4c): before PPO, the network copies the
+rules on the training episodes (`bench/env/imitation.py`); the copy is checked
+on the held-out episodes as step 0, so the best checkpoint is never worse than
+it there. Then PPO fine-tunes it with a smaller learning rate and clip range.
+
 Run:   python experiments/19_train_ppo.py
+       python experiments/19_train_ppo.py --imitate --timesteps 48000 --learning-rate 1e-4 \
+           --clip-range 0.1 --ent-coef 0.001 --out data/checkpoints/ppo-imitate-seed0.pt
 """
 
 import argparse
@@ -34,6 +41,7 @@ from stable_baselines3.common.monitor import Monitor as EpisodeStats
 
 from mlecho.bench.baselines.response import NoResponse, QuarantineEverything
 from mlecho.bench.env.env import ACTIONS, ResponseEnv, play
+from mlecho.bench.env.imitation import demonstrations, imitate, made_up_states
 from mlecho.bench.env.practice import KINDS
 from mlecho.bench.models import SmallCNN
 from mlecho.core import get_device, load_weights, seed_everything
@@ -53,6 +61,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check-every", type=int, default=6_000, help="timesteps")
     parser.add_argument("--agent-seed", type=int, default=0)
     parser.add_argument("--out", default="data/checkpoints/ppo-response-seed0.pt")
+    parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--clip-range", type=float, default=0.2)
+    parser.add_argument("--ent-coef", type=float, default=0.01)
+    parser.add_argument("--imitate", action="store_true", help="copy the rules before PPO")
+    parser.add_argument("--demos", default="data/env/demos-rules-seed7.pt")
+    parser.add_argument("--imitate-steps", type=int, default=5000)
+    parser.add_argument("--made-up-states", type=int, default=20_000)
     parser.add_argument("--no-baselines", action="store_true", help="already logged elsewhere")
     parser.add_argument(
         "--resume", action="store_true", help="continue from <out>.latest after an interruption"
@@ -115,14 +130,18 @@ class Progress(BaseCallback):
     def _on_step(self) -> bool:
         if self.num_timesteps >= self.next_check:
             self.next_check += self.every
-            result = evaluate(self.env, self._decide, self.held_out)
-            mlflow.log_metric("held_out_return", result["return_mean"], step=self.num_timesteps)
-            print(f"  {self.num_timesteps} steps: held-out return {result['return_mean']:.2f}")
-            if result["return_mean"] > self.best:
-                self.best = result["return_mean"]
-                self.model.policy.save(self.out)
-                mlflow.log_metric("best_at_step", self.num_timesteps)
+            self.check()
         return True
+
+    def check(self) -> None:
+        """Play the held-out episodes deterministically; keep the network if it's the best."""
+        result = evaluate(self.env, self._decide, self.held_out)
+        mlflow.log_metric("held_out_return", result["return_mean"], step=self.num_timesteps)
+        print(f"  {self.num_timesteps} steps: held-out return {result['return_mean']:.2f}")
+        if result["return_mean"] > self.best:
+            self.best = result["return_mean"]
+            self.model.policy.save(self.out)
+            mlflow.log_metric("best_at_step", self.num_timesteps)
 
     def _on_rollout_end(self) -> None:
         rewards = [info["r"] for info in self.model.ep_info_buffer]
@@ -144,6 +163,26 @@ class Progress(BaseCallback):
     def _decide(self, obs, state):
         action, _ = self.model.policy.predict(obs, deterministic=True)
         return ACTIONS[int(action)]
+
+
+def warm_start(agent: PPO, env: ResponseEnv, train: list[int], args) -> dict:
+    """Record the rules on every training episode (cached in `--demos`) and copy them,
+    together with their actions on made-up States."""
+    rules, demos_path = RulePolicy(), Path(args.demos)
+    if demos_path.exists():
+        demos = torch.load(demos_path, weights_only=False)  # our own file
+    else:
+        start = time.perf_counter()
+        numbers = list(range(len(train)))  # env holds the training episodes in this order
+        demos = demonstrations(env, lambda obs, state: rules.decide(state), numbers, 0.95)
+        mlflow.log_metric("demo_minutes", (time.perf_counter() - start) / 60)
+        demos_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(demos, demos_path)
+    extra = made_up_states(rules.decide, args.made_up_states, seed=args.agent_seed)
+    fit = imitate(agent.policy, demos, extra, steps=args.imitate_steps, seed=args.agent_seed)
+    mlflow.log_metrics({f"imitate_{k}": v for k, v in fit.items()})
+    print("imitation: " + ", ".join(f"{k} {v:.3f}" for k, v in fit.items()))
+    return demos
 
 
 def main() -> None:
@@ -216,7 +255,9 @@ def main() -> None:
             n_steps=512,
             batch_size=64,
             gamma=0.95,
-            ent_coef=0.01,
+            learning_rate=args.learning_rate,
+            clip_range=args.clip_range,
+            ent_coef=args.ent_coef,
             policy_kwargs={"net_arch": [64, 64]},
             seed=args.agent_seed,
             device="cpu",
@@ -226,11 +267,17 @@ def main() -> None:
             agent.num_timesteps = resumed["steps"]
             print(f"resuming at {resumed['steps']} steps")
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        progress = Progress(test_env, test_numbers, args.check_every, args.out, resumed)
+        if args.imitate and not resumed:
+            demos = warm_start(agent, env.unwrapped, train, args)
+            print(f"copied the rules on {len(demos['actions'])} windows")
+            progress.init_callback(agent)
+            progress.check()  # step 0: the copy of the rules
         start = time.perf_counter()
         done = resumed["steps"] if resumed else 0
         agent.learn(
             args.timesteps - done,
-            callback=Progress(test_env, test_numbers, args.check_every, args.out, resumed),
+            callback=progress,
             reset_num_timesteps=not resumed,
         )
         mlflow.log_metric("train_minutes", (time.perf_counter() - start) / 60)

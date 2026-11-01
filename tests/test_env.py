@@ -158,3 +158,48 @@ def test_ppo_policy_loads_and_decides(tiny_world, tmp_path):
     policy = PPOPolicy(tmp_path / "agent.pt")
     state = State("clean", 0.9, (0.9, 0.025, 0.025, 0.025, 0.025), 0, False, False, 0.0)
     assert policy.decide(state) in list(Action)
+
+
+def test_demonstrations_and_imitation_copy_the_rules(tiny_world):
+    from stable_baselines3 import PPO
+
+    from mlecho.bench.env.env import ResponseEnv
+    from mlecho.bench.env.imitation import demonstrations, imitate
+    from mlecho.response.rules import RulePolicy
+
+    guard, episode, train_raw = tiny_world
+    val_raw, val_labels = _images(50, seed=2)
+    env = ResponseEnv(
+        [episode],
+        train_raw,
+        guard.monitor.calibration,
+        guard.monitor.classifier,
+        nn.Sequential(nn.Flatten(), nn.Linear(3 * 32 * 32, 10)),
+        val_raw,
+        val_labels,
+        DEVICE,
+        window=2,
+        measure_images=50,
+    )
+    rules = RulePolicy()
+    demos = demonstrations(env, lambda obs, state: rules.decide(state), [0], gamma=0.95)
+    assert demos["observations"].shape == (4, OBSERVATION_SIZE) and len(demos["actions"]) == 4
+    assert (demos["returns"] <= 0).all()
+
+    # a made-up teacher that acts when the backdoor probability is high
+    obs = np.random.default_rng(0).uniform(0, 1, (400, OBSERVATION_SIZE)).astype(np.float32)
+    actions = np.where(obs[:, 1] > 0.7, 2, 0)
+    made_up = {"observations": obs, "actions": actions, "returns": -obs[:, 1]}
+    policy = PPO("MlpPolicy", env, device="cpu").policy
+    result = imitate(policy, made_up, steps=400)
+    assert result["agreement"] > 0.9 and result["agreement_acting"] > 0.8
+
+
+def test_made_up_states_cover_every_rule_action():
+    from mlecho.bench.env.env import ACTIONS
+    from mlecho.bench.env.imitation import made_up_states
+    from mlecho.response.rules import RulePolicy
+
+    made_up = made_up_states(RulePolicy().decide, 3000)
+    assert made_up["observations"].shape == (3000, OBSERVATION_SIZE)
+    assert set(made_up["actions"].tolist()) == set(range(len(ACTIONS)))
