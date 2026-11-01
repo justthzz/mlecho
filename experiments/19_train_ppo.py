@@ -53,7 +53,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check-every", type=int, default=6_000, help="timesteps")
     parser.add_argument("--agent-seed", type=int, default=0)
     parser.add_argument("--out", default="data/checkpoints/ppo-response-seed0.pt")
+    parser.add_argument("--no-baselines", action="store_true", help="already logged elsewhere")
+    parser.add_argument(
+        "--resume", action="store_true", help="continue from <out>.latest after an interruption"
+    )
     return parser.parse_args()
+
+
+def latest_paths(out: str) -> tuple[Path, Path]:
+    """The latest network and its bookkeeping (saved after every update, for --resume)."""
+    return Path(f"{out}.latest"), Path(f"{out}.latest.json")
 
 
 def split(episodes, held_out: int) -> tuple[list[int], list[int]]:
@@ -96,10 +105,12 @@ class Progress(BaseCallback):
     """Logs the training return per rollout, and every `every` steps plays the
     held-out episodes and keeps the best network."""
 
-    def __init__(self, env: ResponseEnv, held_out: list[int], every: int, out: str):
+    def __init__(self, env: ResponseEnv, held_out: list[int], every: int, out: str, resumed=None):
         super().__init__()
         self.env, self.held_out, self.every, self.out = env, held_out, every, out
         self.best, self.next_check = -np.inf, every
+        if resumed is not None:
+            self.best, self.next_check = resumed["best"], resumed["next_check"]
 
     def _on_step(self) -> bool:
         if self.num_timesteps >= self.next_check:
@@ -117,6 +128,18 @@ class Progress(BaseCallback):
         rewards = [info["r"] for info in self.model.ep_info_buffer]
         if rewards:
             mlflow.log_metric("train_return", float(np.mean(rewards)), step=self.num_timesteps)
+        network, bookkeeping = latest_paths(self.out)
+        self.model.policy.save(network)
+        bookkeeping.write_text(
+            json.dumps(
+                {
+                    "steps": self.num_timesteps,
+                    "best": self.best,
+                    "next_check": self.next_check,
+                    "run_id": mlflow.active_run().info.run_id,
+                }
+            )
+        )
 
     def _decide(self, obs, state):
         action, _ = self.model.policy.predict(obs, deterministic=True)
@@ -154,9 +177,19 @@ def main() -> None:
     test_env = make_env(held_out)
     test_numbers = list(range(len(held_out)))
 
+    network_path, bookkeeping_path = latest_paths(args.out)
+    resumed = json.loads(bookkeeping_path.read_text()) if args.resume else None
     mlflow.set_experiment("mlecho-ppo")
-    with mlflow.start_run(run_name=f"train-ppo-seed{args.agent_seed}"):
-        mlflow.log_params(vars(args) | {"device": str(device), "train_episodes": len(train)})
+    run = (
+        {"run_id": resumed["run_id"]}
+        if resumed
+        else {"run_name": f"train-ppo-seed{args.agent_seed}"}
+    )
+    with mlflow.start_run(**run):
+        if resumed:
+            mlflow.set_tag("resumed_at_step", resumed["steps"])
+        else:
+            mlflow.log_params(vars(args) | {"device": str(device), "train_episodes": len(train)})
 
         rng = np.random.default_rng(args.agent_seed)
         baselines = {
@@ -166,7 +199,7 @@ def main() -> None:
             "random": lambda obs, state: ACTIONS[int(rng.integers(len(ACTIONS)))],
         }
         table = {}
-        for name, decide in baselines.items():
+        for name, decide in ({} if args.no_baselines or resumed else baselines).items():
             start = time.perf_counter()
             table[name] = evaluate(test_env, decide, test_numbers)
             seconds = (time.perf_counter() - start) / len(test_numbers)
@@ -188,10 +221,17 @@ def main() -> None:
             seed=args.agent_seed,
             device="cpu",
         )
+        if resumed:  # the network after the last finished update (not the trainer's state)
+            agent.policy.load_state_dict(agent.policy.load(network_path, device="cpu").state_dict())
+            agent.num_timesteps = resumed["steps"]
+            print(f"resuming at {resumed['steps']} steps")
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         start = time.perf_counter()
+        done = resumed["steps"] if resumed else 0
         agent.learn(
-            args.timesteps, callback=Progress(test_env, test_numbers, args.check_every, args.out)
+            args.timesteps - done,
+            callback=Progress(test_env, test_numbers, args.check_every, args.out, resumed),
+            reset_num_timesteps=not resumed,
         )
         mlflow.log_metric("train_minutes", (time.perf_counter() - start) / 60)
 
