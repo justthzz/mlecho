@@ -118,6 +118,7 @@ Each fact lives in **one** file; the others link to it instead of copying it.
 | `docs/ARCHITECTURE.md` | folder layout, import rules, coding rules, commit checks | a folder is added, or a rule changes |
 | `docs/ROADMAP.md` | the build steps, status, design decisions, open items | a step starts or finishes, or a decision is made |
 | `docs/RESULTS.md` | official experiment results with MLflow run IDs | an official experiment run finishes |
+| `docs/REFERENCES.md` | the papers and tools the implementation uses, and where | a method from a paper is added or dropped |
 | `CLAUDE.md` | instructions for Claude Code; points to the files above | commands or conventions change |
 
 At the end of every step: update the ROADMAP status, update the README status,
