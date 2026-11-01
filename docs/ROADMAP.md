@@ -185,6 +185,30 @@ Plan (fixed before training; written 2026-10-30):
 - **Stated assumption:** the calibration data is clean. If it is poisoned, the poison is learned as normal.
 - **Optional generalisation check (step 8):** repeat the evaluation on a second dataset (e.g. GTSRB traffic signs) after calibrating on it.
 
+## Changes from the proposal
+
+Where the built system differs from the proposal (v2, `docs/proposal/`, private), and the evidence for each change. For the PP defence ("how did the evidence change your design?") and the dissertation's methodology chapter.
+
+| Proposal | Built | Why (evidence) |
+|---|---|---|
+| A CNN feature extractor + VAE scores each **batch** | The CNN-VAE scores each **image** (worst 4×4 patch); a second **label check** (reference CNN) scores each (image, label) pair; verdicts per **window** of 10 batches | Whole-image error hides a small trigger (AUC 0.68 vs 0.99, exp 07); the VAE sees only pictures, so it can't see label-flips (exp 08/09); single batches are too noisy (exp 08) |
+| Classify backdoor / label-flip / gradient / accumulative | Classify clean / backdoor / label-flip / accumulative / **harmless shift** | Gradient matching is never detected (exp 08, 09, 12), so it can't be classified; harmless changes set off the alarms (exp 11), so the classifier must recognise them and escalate instead of deleting data |
+| Classifier trained on BackdoorBench-labelled attack batches | Trained only on **made-up attacks** built from the user's trusted images at calibration | No real attack data needed; tested on attacks it never saw (exp 14) |
+| BackdoorBench-generated attacks | All four attacks implemented in `attacks/` from the original papers; BackdoorBench is the reference for settings | Injecting attacks into a live training stream needs our own code |
+| Accumulative attack (Pang et al., 2021) | Partly reproduced at our scale; a **slow-drip** backdoor is the accumulative scenario | Exp 04 and 4 tuning sweeps (40 runs): trigger drop ≤ ~5 points (step 2) |
+| Quarantine poisoned **batches** | Quarantine per **image** | At 5% poison almost every batch of 128 holds poison (step 5) |
+| NFR-P1 < 5% through profiling | Met only with sampled checking, `check_every = 16` (+4.7–4.9%); every batch costs +56–74% | Exp 10; this is the proposal's own contingency ("reduce sampling frequency") |
+| CIFAR-10/100, TrojAI | CIFAR-10 only (a second dataset is optional in step 8) | Time; TrojAI evaluates trained models, not training streams |
+| Baselines: PSI/KS, no response, Memorization Discrepancy | PSI/KS (exp 12), no response and quarantine-everything (exp 15); Memorization Discrepancy not run | It targets the Pang attack, which was only partly reproduced (open item) |
+| RQ1 compared with pre- **and post-training** defences | Compared with statistical drift checks only | Open item: a post-training defence (e.g. Neural Cleanse) is not compared |
+| MLflow + Weights & Biases + Docker | MLflow + a JSON-lines audit log | Open item: W&B and Docker |
+| University GPU | Everything runs on an Apple M2 laptop (8 GB) | Small models; sampled checking; cached evidence for PPO |
+| PPO only after a go/no-go gate at month 6–7 | Core (RQ1–RQ3) finished first; PPO built in step 7 | The gate was passed |
+| RQ4 / FR-M4 "response-selection accuracy" | Policies compared by outcome: attack effect, recovery time, clean data lost, false actions (exp 15 protocol); the rule table is unit-tested | A live episode has no ground-truth "correct action" |
+| Versioned, checksummed data manifest | Fixed split (seed 42); torchvision checks the CIFAR-10 archive's MD5 | A manifest file could still be added |
+
 ## Open items
 - Supervisor: tell them PPO is now a main deliverable, not only an enhancement. Also confirm W&B and Docker are still required.
+- Decide (with the supervisor): build W&B and Docker, or drop them with a reason; run Memorization Discrepancy (Zhu et al., 2023) as a baseline or drop it; compare with a post-training defence for RQ1, or narrow RQ1's wording.
+- Ethics application: signed and submitted with the PP (the rubric marks the whole PP 0 without it).
 - Proposal fixes: cover date vs "accessed" dates; refresh the TOC page numbers; the CIFAR-10/100 scope wording; section 3.13's proof-of-concept claim; cite each attack's paper next to "require extension ... or separate implementation" and in REFERENCES (BadNets, Gu et al., 2017; Witches' Brew, Geiping et al., 2021; Pang et al., 2021 already cited; label-flip covered by Cinà et al.); reword "BackdoorBench ... selected over building custom attack code", since the attacks are implemented in `src/mlecho/attacks/` (BackdoorBench stays as the reference for settings and protocol).
