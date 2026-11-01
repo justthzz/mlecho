@@ -62,7 +62,7 @@ Each window of 10 batches gets a verdict (clean, backdoor, label-flip, accumulat
 | `Guard` library API and MLflow event logging | ✅ built and evaluated: `Guard.calibrate` learns everything from your own trusted images (~12 min on an M2), saves to one file and reproduces the research results; every window is logged to a JSON audit file and MLflow; checking every 16th quiet batch keeps the overhead under 5% with the same protection |
 | PPO response agent | 🔄 in progress: practice world and reward built and checked; agent training |
 
-Detailed plan: [docs/ROADMAP.md](https://github.com/justthzz/mlecho/blob/main/docs/ROADMAP.md). Results so far: [docs/RESULTS.md](https://github.com/justthzz/mlecho/blob/main/docs/RESULTS.md). Papers it builds on: [docs/REFERENCES.md](https://github.com/justthzz/mlecho/blob/main/docs/REFERENCES.md).
+Detailed plan: [docs/ROADMAP.md](https://github.com/justthzz/mlecho/blob/main/docs/ROADMAP.md). Results so far: [docs/RESULTS.md](https://github.com/justthzz/mlecho/blob/main/docs/RESULTS.md). Research questions and gaps: [docs/RESEARCH.md](https://github.com/justthzz/mlecho/blob/main/docs/RESEARCH.md). Papers it builds on: [docs/REFERENCES.md](https://github.com/justthzz/mlecho/blob/main/docs/REFERENCES.md).
 
 ## Development
 

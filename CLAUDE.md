@@ -8,6 +8,7 @@ Read these first. Each fact lives in exactly one of them, so link to them rather
 - `docs/ARCHITECTURE.md`: folder layout, import rules, coding rules, commit checks, which doc owns what
 - `README.md`: public description, status table, dev setup
 - `docs/RESULTS.md`: official results with MLflow run IDs. Add a row as soon as an official run finishes.
+- `docs/RESEARCH.md`: problem, gaps, RQs, hypotheses, objectives, and where each is answered.
 - `docs/REFERENCES.md`: the papers and tools the implementation uses, and where.
 
 ## Environment
