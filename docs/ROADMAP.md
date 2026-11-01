@@ -187,7 +187,7 @@ Plan (fixed before training; written 2026-10-30):
 
 ## Changes from the proposal
 
-Where the built system differs from the proposal (v2, `docs/proposal/`, private), and the evidence for each change. For the PP defence ("how did the evidence change your design?") and the dissertation's methodology chapter.
+Where the built system differs from the proposal (v2, kept privately in `local-docs/proposal/`), and the evidence for each change. For the PP defence ("how did the evidence change your design?") and the dissertation's methodology chapter.
 
 | Proposal | Built | Why (evidence) |
 |---|---|---|
