@@ -12,7 +12,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 | 4 | Classifier | ✅ softmax regression on 10 window features, trained only on made-up attacks: official backdoor 86.5%, label-flip 98%, slow-drip 76.5–99%, clean 97%; gradient matching unclassifiable | attack-type classifier on detector features | RQ2 |
 | 5 | Rules + actions | ✅ rule table + quarantine / rollback / retrain / escalate; live episodes (3 final seeds): trigger ASR 97–100% → 1.2–1.4%, label-flip halved, 0 false actions, harmless change escalated | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
 | 6 | Library + MLflow | ✅ `Guard` (calibrate / save / load / watch / filter / update / close) reproduces exp 15 from scratch (11.9 min calibration, 5.6 MB file); JSONL audit + MLflow event logging; `check_every=16` gives +4.7–4.9% overhead with the same protection | `Guard` API, event logging to MLflow | NFR-A1, NFR-P1 |
-| 7 | PPO | ⬜ | Gymnasium env, PPO agent behind the same interface as the rules | RQ4 |
+| 7 | PPO | 🔄 in progress: practice world built (120 made-up attack streams, Gymnasium env replaying a real `Guard`), reward checked against baselines (rules −4.69 vs none −9.90); PPO training running (~8 h) | Gymnasium env, PPO agent behind the same interface as the rules | RQ4 |
 | 8 | Evaluation | ⬜ | all comparisons, overhead benchmark (<5%), results tables and figures | RQ1–RQ4, NFR-P1 |
 
 ## Step details

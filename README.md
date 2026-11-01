@@ -60,9 +60,9 @@ Each window of 10 batches gets a verdict (clean, backdoor, label-flip, accumulat
 | Attack-type classifier | ✅ built and evaluated: trained only on made-up attacks, names the real backdoor (86.5%), label-flip (98%) and slow-drip (76.5–99%) and calls 97% of clean windows clean; also tells harmless data changes apart; gradient matching can't be classified (not detected) |
 | Rule-based response and actions | ✅ built and evaluated in live training episodes: backdoor and slow-drip success drops from 97–100% to ~1% (clean level) within 20–100 batches; label-flip damage halved; no false actions on clean data; harmless changes escalated to a human, never deleted |
 | `Guard` library API and MLflow event logging | ✅ built and evaluated: `Guard.calibrate` learns everything from your own trusted images (~12 min on an M2), saves to one file and reproduces the research results; every window is logged to a JSON audit file and MLflow; checking every 16th quiet batch keeps the overhead under 5% with the same protection |
-| PPO response agent | ⬜ not started |
+| PPO response agent | 🔄 in progress: practice world and reward built and checked; agent training |
 
-Detailed plan: [docs/ROADMAP.md](https://github.com/justthzz/mlecho/blob/main/docs/ROADMAP.md). Results so far: [docs/RESULTS.md](https://github.com/justthzz/mlecho/blob/main/docs/RESULTS.md).
+Detailed plan: [docs/ROADMAP.md](https://github.com/justthzz/mlecho/blob/main/docs/ROADMAP.md). Results so far: [docs/RESULTS.md](https://github.com/justthzz/mlecho/blob/main/docs/RESULTS.md). Papers it builds on: [docs/REFERENCES.md](https://github.com/justthzz/mlecho/blob/main/docs/REFERENCES.md).
 
 ## Development
 
