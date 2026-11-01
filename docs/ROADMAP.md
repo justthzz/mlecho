@@ -144,7 +144,7 @@ Notes:
 - [x] 6.6 **Sampled episodes** (exp 15 sampled, every 4th and 16th, seeds 1–3): same protection (ASR 1.4–1.8%), first action later (55–245 batches after onset at every 16th). Found and fixed a rollback bug with sampling (`c5138b9`); default mode re-verified identical (`587be1f6`).
 - [x] 6.7 **Audit before PPO**: the package installs from a wheel into a fresh venv and runs the README example outside the repo; clear errors for wrong trusted data and missing MLflow; `py.typed`; README links work on PyPI. Experiment 17 (`56eb0050`): stronger reference models catch at most 3 points more flipped cats at twice the cost, so the reference model stays; the label-flip weak spot is a trusted-data limit.
 - [x] 6.8 **Released 0.1.0 on PyPI** (2026-10-30, git tag `v0.1.0`): installed from PyPI into a fresh venv, the README example runs. Next release (0.2.0) after PPO.
-- Proposal deliverables still to plan: **Weights & Biases** live dashboard and **Docker** one-command packaging (RO4, section 1.12). Either build them here and in step 8, or agree with the supervisor to drop them.
+- **Weights & Biases: dropped (decided 2 Nov 2026).** MLflow already gives the dashboards and the audit trail, and it keeps all logs on the user's machine (W&B would send them to an outside cloud service, which would also change the ethics declaration). **Docker** one-command packaging (RO4, §1.12) is still to decide.
 
 ### 7. PPO (`src/mlecho/response/ppo.py`, `src/mlecho/bench/env/`)
 - Gymnasium env: one episode = a short, small training run with an attack injected at a random time.
@@ -201,14 +201,14 @@ Where the built system differs from the proposal (v2, kept privately in `local-d
 | CIFAR-10/100, TrojAI | CIFAR-10 only (a second dataset is optional in step 8) | Time; TrojAI evaluates trained models, not training streams |
 | Baselines: PSI/KS, no response, Memorization Discrepancy | PSI/KS (exp 12), no response and quarantine-everything (exp 15); Memorization Discrepancy not run | It targets the Pang attack, which was only partly reproduced (open item) |
 | RQ1 compared with pre- **and post-training** defences | Compared with statistical drift checks only | Open item: a post-training defence (e.g. Neural Cleanse) is not compared |
-| MLflow + Weights & Biases + Docker | MLflow + a JSON-lines audit log | Open item: W&B and Docker |
+| MLflow + Weights & Biases + Docker | MLflow + a JSON-lines audit log | W&B dropped: MLflow covers dashboards and audit, and keeps data local (no third-party upload; matches the ethics declaration). Docker: open item |
 | University GPU | Everything runs on an Apple M2 laptop (8 GB) | Small models; sampled checking; cached evidence for PPO |
 | PPO only after a go/no-go gate at month 6–7 | Core (RQ1–RQ3) finished first; PPO built in step 7 | The gate was passed |
 | RQ4 / FR-M4 "response-selection accuracy" | Policies compared by outcome: attack effect, recovery time, clean data lost, false actions (exp 15 protocol); the rule table is unit-tested | A live episode has no ground-truth "correct action" |
 | Versioned, checksummed data manifest | Fixed split (seed 42); torchvision checks the CIFAR-10 archive's MD5 | A manifest file could still be added |
 
 ## Open items
-- Supervisor: tell them PPO is now a main deliverable, not only an enhancement. Also confirm W&B and Docker are still required.
-- Decide (with the supervisor): build W&B and Docker, or drop them with a reason; run Memorization Discrepancy (Zhu et al., 2023) as a baseline or drop it; compare with a post-training defence for RQ1, or narrow RQ1's wording.
+- Supervisor: tell them PPO is now a main deliverable, not only an enhancement. Also tell them W&B is dropped in favour of MLflow, and confirm whether Docker is still required.
+- Decide (with the supervisor): build Docker or drop it with a reason; run Memorization Discrepancy (Zhu et al., 2023) as a baseline or drop it; compare with a post-training defence for RQ1, or narrow RQ1's wording.
 - Ethics application: signed and submitted with the PP (the rubric marks the whole PP 0 without it).
 - Proposal fixes: cover date vs "accessed" dates; refresh the TOC page numbers; the CIFAR-10/100 scope wording; section 3.13's proof-of-concept claim; cite each attack's paper next to "require extension ... or separate implementation" and in REFERENCES (BadNets, Gu et al., 2017; Witches' Brew, Geiping et al., 2021; Pang et al., 2021 already cited; label-flip covered by Cinà et al.); reword "BackdoorBench ... selected over building custom attack code", since the attacks are implemented in `src/mlecho/attacks/` (BackdoorBench stays as the reference for settings and protocol).
