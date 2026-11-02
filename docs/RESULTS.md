@@ -445,3 +445,25 @@ Question: the label-flip weak spot (cat → dog at 2% missed, exp 09; a third of
 | deeper (two convolutions per stage) + decay + smoothing | 76.1% | 73.4% | **70.4%** | 18.1% | 16.6 |
 
 Finding: a better model raises overall accuracy by up to 8 points, but **catches only 3 points more flipped cats**, at twice the cost per checked batch (the guard is already at 4.7–4.9% overhead with `check_every = 16`, NFR-P1 < 5%). With ~400 trusted cats and ~400 trusted dogs, no small model trained from scratch tells them apart well: the label-flip weak spot is a limit of the trusted data, not of the model size. **Decision: keep the current reference model.** Ways that could help and are outside this project's assumptions: a larger trusted set, or pretrained image features (an external model, extra download and cost). A rollback for label-flip (undoing what was learned before the quarantine) is a response question, left to step 7 (PPO); the frozen rule table is not changed.
+
+## Experiment 19: PPO response agent in the practice world (step 7, RQ4)
+
+`python experiments/19_train_ppo.py` · MLflow experiment `mlecho-ppo` · baselines run `e35bb294` (first training attempt, interrupted at ~8,700 steps), PPO from scratch run `d30b57a4` (24,000 steps, resumed twice after interruptions)
+
+Practice world only (made-up attacks, experiment 18): 100 training episodes, 20 held-out (4 per kind). Score = return of a whole episode (sum of the window rewards; closer to 0 is better). End effect = attack effect at the episode's end (trigger ASR, or share of the flipped class called the target). Deterministic actions.
+
+Held-out return during training: 6,000 steps −9.94 (always continue), 12,000 −7.76, **18,000 −4.28 (chosen)**, 24,000 −4.33.
+
+| Policy (held-out) | clean | backdoor | slow-drip | label-flip | harmless | **mean** | End effect: backdoor / slow-drip / label-flip |
+|---|---|---|---|---|---|---|---|
+| none | −0.03 | −22.77 | −20.05 | −6.30 | −0.36 | −9.90 | 97% / 95% / 27% |
+| random | −7.71 | −8.86 | −7.80 | −6.03 | −6.45 | −7.37 | 11% / 1% / 2% |
+| quarantine-everything | −0.02 | −20.31 | −12.90 | −1.63 | −1.92 | −7.36 | 85% / 52% / 3% |
+| rules | −0.02 | −13.91 | **−7.72** | **−1.44** | **−0.37** | −4.69 | 69% / **37%** / **3%** |
+| PPO from scratch | −0.02 | **−6.01** | −8.57 | −5.14 | −1.39 | **−4.22** | **7%** / 42% / 17% |
+
+(The chosen network scored −4.28 at its check and −4.22 when replayed at the end; the victim trains on `mps`, which is not bit-for-bit repeatable.)
+
+Actions of PPO on the 20 held-out episodes (other than continue): backdoor rollback 78, escalate 22; slow-drip escalate 77, rollback 9; label-flip escalate 93, rollback 1; harmless escalate 21, rollback 1; clean none.
+
+Finding: PPO from scratch beats the rules on average (−4.22 vs −4.69) through **one learned trick: rolling back again and again during a backdoor** (end effect 7% vs the rules' 69%, which act only once per incident while the quarantine leaks). It did **not** learn the rest of the rules' knowledge: it escalates label-flips instead of quarantining them (end effect 17% vs 3%), escalates slow-drips instead of retraining, and once rolls back on a harmless change. It never acts on clean episodes. Escalating costs nothing during an attack in this reward, so the agent uses it as a free "continue". The two policies are good at different things, which motivates the second agent (copy the rules, then PPO; ROADMAP 7.4c). Practice-world scores only; the real test is experiment 15 on seeds 4–6.
