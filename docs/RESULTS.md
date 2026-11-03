@@ -467,3 +467,36 @@ Held-out return during training: 6,000 steps −9.94 (always continue), 12,000 �
 Actions of PPO on the 20 held-out episodes (other than continue): backdoor rollback 78, escalate 22; slow-drip escalate 77, rollback 9; label-flip escalate 93, rollback 1; harmless escalate 21, rollback 1; clean none.
 
 Finding: PPO from scratch beats the rules on average (−4.22 vs −4.69) through **one learned trick: rolling back again and again during a backdoor** (end effect 7% vs the rules' 69%, which act only once per incident while the quarantine leaks). It did **not** learn the rest of the rules' knowledge: it escalates label-flips instead of quarantining them (end effect 17% vs 3%), escalates slow-drips instead of retraining, and once rolls back on a harmless change. It never acts on clean episodes. Escalating costs nothing during an attack in this reward, so the agent uses it as a free "continue". The two policies are good at different things, which motivates the second agent (copy the rules, then PPO; ROADMAP 7.4c). Practice-world scores only; the real test is experiment 15 on seeds 4–6.
+
+**Second agent: copy the rules, then PPO** (run `ba206b3d`, `--imitate --timesteps 48000 --learning-rate 1e-4 --clip-range 0.1 --ent-coef 0.001`; plan in ROADMAP 7.4c, fixed before training). Copy: agrees with the rules on 99.9% of the 4,000 training windows (98.4% where they act) and 99.8% of 20,000 made-up States. Held-out return: **step 0 (the copy alone) −4.64** (rules −4.69), 6,000 −4.67, 12,000 −4.80, 18,000 −4.40, 24,000 −3.91, **30,000 −3.88 (chosen)**, 36,000 −3.89, 42,000 −4.70, 48,000 −3.88. 16.7 h on the M2.
+
+| Policy (held-out) | clean | backdoor | slow-drip | label-flip | harmless | **mean** |
+|---|---|---|---|---|---|---|
+| rules | −0.02 | −13.91 | −7.72 | −1.44 | −0.37 | −4.69 |
+| PPO from scratch | −0.02 | −6.01 | −8.57 | −5.14 | −1.39 | −4.22 |
+| **PPO, copy then improve** | −0.03 | −9.03 | **−7.45** | −1.50 | −1.38 | **−3.88** |
+
+Actions of the copy-then-improve agent on the 20 held-out episodes: backdoor rollback 21, escalate 3; slow-drip retrain 3, rollback 1, escalate 4; label-flip quarantine 6, escalate 3, retrain 1; harmless escalate 4, rollback 1; clean none.
+
+Finding: the warm start keeps what the rules know (label-flip −1.50 vs −1.44, slow-drip a little better) and adds part of PPO's repeated-rollback trick for backdoors (−9.03 vs the rules' −13.91), so it is the best policy in the practice world. Its one new mistake is a rollback on a harmless change (−1.38 vs −0.37).
+
+## Experiment 15, step 7: final test of the PPO agents (RQ4)
+
+`python experiments/15_response_episodes.py --policy {rules,none,quarantine-everything,ppo} [--ppo PATH] --episode-seed {4,5,6}` · MLflow experiment `mlecho-response` · **fresh episode seeds 4–6**, never used before by the rules, the PPO agents or any choice. Runs: rules `a3f37299`, `8bc4541d`, `4d3e71de`; none `383c1f0e`, `a9ab0d80`, `322d7db1`; quarantine-everything `81d28a68`, `419162cf`, `5c58089f`; PPO from scratch (`ppo-response-seed0.pt`) `829707c2`, `d914e78a`, `b1ab482f`; **PPO copy then improve** (`ppo-imitate-seed0.pt`) `5cab6e5d`, `34b343ae`, `1f041e18`. Development on seed 0 first (both PPO agents, no changes made after it). Check: the rules rerun on seed 1 (`8ae64aea`) reproduces the step 5 run, 0 of 70 metrics different.
+
+Same setup as the step 5 final runs (every batch checked). Mean ± standard deviation over seeds 4–6; attack effect = ASR on triggered test images, or the share of test cats called dog.
+
+| Policy | backdoor | slow-drip 1 | slow-drip 5 | label-flip (cats as dog) | Clean accuracy | Clean: actions | Harmless: clean images left out |
+|---|---|---|---|---|---|---|---|
+| none | 99.7 ± 0.2 | 97.3 ± 0.2 | 99.6 ± 0.2 | 60.3 ± 4.2 | 83.8 | 0 | 0 |
+| quarantine-everything | 50.3 ± 3.2 | 7.0 ± 8.4 | 37.6 ± 5.0 | 18.9 ± 9.4 | 84.2 | 0 | 2,277–2,315 |
+| **rules** | 1.7 ± 0.4 | **1.2 ± 0.3** | **1.4 ± 0.1** | **20.2 ± 11.6** | 84.1 | 0 | 0 (escalated) |
+| PPO from scratch | 2.2 ± 1.2 | **97.3 ± 0.2** | 34.0 ± 56.7 | 47.5 ± 14.7 | 83.8 | 0 | 0 (no action) |
+| **PPO copy then improve** | **1.5 ± 0.4** | **1.2 ± 0.3** | **1.4 ± 0.1** | **20.2 ± 11.6** | 84.0 | 0 | 0 (escalated) |
+
+First action (batch; attack from batch 100): rules 120 for every attack (slow-drip 1: 120, 160, 120); copy-then-improve the same except the backdoor at 110, 120, 110; from scratch backdoor 110, label-flip 120–130, slow-drip 5 at 130, **slow-drip 1 only at 240–270**. Poison images trained on during the backdoor: rules 122–139, copy-then-improve 61–132 (61 and 72 on the two seeds where it acted earlier). Gradient matching: never detected by any policy (target P(dog) 11.5–30.9%, as with no response).
+
+Findings:
+1. **The copy-then-improve agent matches the rules on the real attacks** and is slightly better on the backdoor (acts one window earlier on two of three seeds, half the poison learned, ASR 1.5% vs 1.7%; within the seed spread). Everything else is identical: the same end effect on slow-drip and label-flip, no action on clean data, the harmless change escalated with nothing deleted. **H4 ("PPO matches or exceeds the rules") is supported in the "matches" sense**; it does not clearly exceed them here.
+2. **PPO from scratch fails the real test** despite beating the rules in the practice world (−4.22 vs −4.69): slow-drip at 1 per batch is never stopped (97.3%, like no response), slow-drip 5 fails on one seed of three, and label-flip is barely helped (47.5% vs none 60.3%). Its practice advantage came from one trick (repeated rollbacks); the knowledge it lacked mattered more on the real attacks. A **sim-to-real gap**, and the reason the warm start matters.
+3. **Why the practice gain didn't show up on the real backdoor:** the rules already remove the real (vivid 4×4) backdoor (1.7%), so there is little left to win. The practice world's gain came from made-up triggers the picture check sees poorly, where the rules' single action leaves 69% ASR. The learned agent is the more robust choice for harder triggers, but that is shown only in the practice world.
