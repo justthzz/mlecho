@@ -2,7 +2,7 @@
 
 **A Real-Time CNN-VAE and Reinforcement Learning Framework for Detecting and Responding to Training Data Poisoning in MLOps Pipelines.**
 
-> ⚠️ **Work in progress.** MLEcho is being built as a Final Year Project (FYP). Detection, attack classification, the rule-based response and the `Guard` API are built and evaluated; the PPO response agent is next. See [Status](#status).
+> ⚠️ **Work in progress.** MLEcho is being built as a Final Year Project (FYP). Detection, attack classification, the rule-based response, the `Guard` API and a PPO response agent are built and evaluated; the full evaluation is next. See [Status](#status).
 
 ## What is MLEcho?
 
@@ -60,7 +60,7 @@ Each window of 10 batches gets a verdict (clean, backdoor, label-flip, accumulat
 | Attack-type classifier | ✅ built and evaluated: trained only on made-up attacks, names the real backdoor (86.5%), label-flip (98%) and slow-drip (76.5–99%) and calls 97% of clean windows clean; also tells harmless data changes apart; gradient matching can't be classified (not detected) |
 | Rule-based response and actions | ✅ built and evaluated in live training episodes: backdoor and slow-drip success drops from 97–100% to ~1% (clean level) within 20–100 batches; label-flip damage halved; no false actions on clean data; harmless changes escalated to a human, never deleted |
 | `Guard` library API and MLflow event logging | ✅ built and evaluated: `Guard.calibrate` learns everything from your own trusted images (~12 min on an M2), saves to one file and reproduces the research results; every window is logged to a JSON audit file and MLflow; checking every 16th quiet batch keeps the overhead under 5% with the same protection |
-| PPO response agent | 🔄 in progress: practice world and reward built and checked; agent training |
+| PPO response agent | ✅ built and evaluated: trained in a practice world of made-up attacks; the agent that first copies the rules, then improves with PPO, matches the rules on real attacks it never saw (backdoor 1.5% vs 1.7%) and beats them in practice; PPO from scratch fails on slow-drip (not in the PyPI release yet) |
 
 Detailed plan: [docs/ROADMAP.md](https://github.com/justthzz/mlecho/blob/main/docs/ROADMAP.md). Results so far: [docs/RESULTS.md](https://github.com/justthzz/mlecho/blob/main/docs/RESULTS.md). Research questions and gaps: [docs/RESEARCH.md](https://github.com/justthzz/mlecho/blob/main/docs/RESEARCH.md). Papers it builds on: [docs/REFERENCES.md](https://github.com/justthzz/mlecho/blob/main/docs/REFERENCES.md).
 

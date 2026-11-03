@@ -2,7 +2,7 @@
 
 Build plan for the FYP. Update the status column and "Current step" when a step is finished.
 
-**Current step: 7 (PPO)**, in progress (7.1–7.3 done; PPO training, experiment 19, running). Steps 1–6 are finished and re-verified; 0.1.0 is on PyPI.
+**Current step: 8 (evaluation)**, not started. Steps 1–7 are finished; 0.1.0 is on PyPI (without PPO).
 
 | # | Step | Status | Delivers | Answers |
 |---|---|---|---|---|
@@ -12,7 +12,7 @@ Build plan for the FYP. Update the status column and "Current step" when a step 
 | 4 | Classifier | ✅ softmax regression on 10 window features, trained only on made-up attacks: official backdoor 86.5%, label-flip 98%, slow-drip 76.5–99%, clean 97%; gradient matching unclassifiable | attack-type classifier on detector features | RQ2 |
 | 5 | Rules + actions | ✅ rule table + quarantine / rollback / retrain / escalate; live episodes (3 final seeds): trigger ASR 97–100% → 1.2–1.4%, label-flip halved, 0 false actions, harmless change escalated | `ResponsePolicy` interface, rule table, quarantine / rollback / retrain / escalate | RQ3 |
 | 6 | Library + MLflow | ✅ `Guard` (calibrate / save / load / watch / filter / update / close) reproduces exp 15 from scratch (11.9 min calibration, 5.6 MB file); JSONL audit + MLflow event logging; `check_every=16` gives +4.7–4.9% overhead with the same protection | `Guard` API, event logging to MLflow | NFR-A1, NFR-P1 |
-| 7 | PPO | 🔄 in progress: practice world built (120 made-up attack streams, Gymnasium env replaying a real `Guard`), reward checked against baselines (rules −4.69 vs none −9.90); PPO training running (~8 h) | Gymnasium env, PPO agent behind the same interface as the rules | RQ4 |
+| 7 | PPO | ✅ practice world (120 made-up attack streams, Gymnasium env replaying a real `Guard`); two agents: PPO from scratch (practice −4.22 vs rules −4.69, but fails slow-drip in the real test) and **copy the rules, then PPO** (practice −3.88; real test seeds 4–6: matches the rules, backdoor 1.5% vs 1.7%) | Gymnasium env, PPO agent behind the same interface as the rules | RQ4 |
 | 8 | Evaluation | ⬜ | all comparisons, overhead benchmark (<5%), results tables and figures | RQ1–RQ4, NFR-P1 |
 
 ## Step details
@@ -166,9 +166,9 @@ Plan (fixed before training; written 2026-10-30):
 - **Reward revised once, before any PPO training on the practice library.** A smoke test of experiment 19 (run `7219d87f`, tiny 40-batch practice episodes, not the real library) scored random actions best (−0.38 vs rules −0.86, none −1.26). The cause is structural: the start model is already trained, so resetting it again and again costs nothing under "accuracy drop since the start" (rollback/retrain cost 0.02). Now rollback 0.1, retrain 0.3 (training to redo) and 0.1 for any action when nothing happened. (Correction: an earlier version of this note quoted the smoke-test numbers as if they came from the real practice library.)
 - Note: Stable-Baselines3 2.9's `PPO.save/load` fails with torch 2.14 (nested-zip read error, even on CartPole); `PPOPolicy` saves and loads only the network (`policy.save`), which works.
 - [x] 7.3b **Sanity check on the real practice library** (experiment 19, run `e35bb294`, 20 held-out practice episodes, mean return; higher is better): none −9.90, random −7.37, quarantine-everything −7.36, **rules −4.69**. The reward ranks the policies sensibly. It also shows the rules' weak spot on made-up triggers: backdoor effect at the end 69% (none 97%), slow-drip 37% (none 95%); the quarantine leaks and the rules act only once per incident. Label-flip 3% (none 27%); clean and harmless: no cost.
-- [ ] 7.4 Train PPO. First full run (`e35bb294`) was interrupted at ~8,700 of 24,000 steps when the Mac slept and restarted (each practice episode ~45 s, so the run needs ~8 h awake). Up to then the training return (stochastic actions) rose from −6.94 to about −3.4; the one held-out check (6,000 steps, deterministic actions) scored −9.94, like no response: the most likely action was still always "continue". Restarted with `--resume` support (latest network saved after every update) and `--no-baselines` (the baselines above are deterministic and stay valid).
+- [x] 7.4 Train PPO. First full run (`e35bb294`) was interrupted at ~8,700 of 24,000 steps when the Mac slept and restarted (each practice episode ~45 s, so the run needs ~8 h awake). Up to then the training return (stochastic actions) rose from −6.94 to about −3.4; the one held-out check (6,000 steps, deterministic actions) scored −9.94, like no response: the most likely action was still always "continue". Restarted with `--resume` support (latest network saved after every update) and `--no-baselines` (the baselines above are deterministic and stay valid).
   Restarted run `d30b57a4` (PPO from scratch), **finished** (2 Nov): held-out return 6,000 steps −9.94, 12,000 −7.76, **18,000 −4.28 (chosen)**, 24,000 −4.33; rules −4.69. It beats the rules by rolling back again and again during backdoors (end effect 7% vs 69%) but is worse on label-flip (escalates instead of quarantining: 17% vs 3%) and slow-drip. Details: RESULTS experiment 19.
-- [ ] 7.4c **Second agent: copy the rules, then PPO** (plan fixed 2 Nov, before its training). PPO from scratch must find out by chance that acting pays; the rules already know the basic answer, so the agent starts from them:
+- [x] 7.4c **Second agent: copy the rules, then PPO** (plan fixed 2 Nov, before its training). PPO from scratch must find out by chance that acting pays; the rules already know the basic answer, so the agent starts from them:
   1. *Demonstrations:* the rules play the 100 training practice episodes (`bench/env/imitation.py`, `demonstrations`; cached in `data/env/demos-rules-seed7.pt`).
   2. *Copying (behaviour cloning):* 5,000 supervised steps; the action head learns the rules' action, the value head their discounted return (γ 0.95). The practice windows hold few actions, so the action head also learns the rules on 20,000 made-up States (`made_up_states`; the rules are a formula of the State). Offline check: the copy agrees with the rules on 99.7% of fresh made-up States (99.5% where the rules act).
   3. *Step-0 check:* the copy plays the held-out practice episodes first, so the selected agent is never worse than the copy there.
@@ -176,8 +176,10 @@ Plan (fixed before training; written 2026-10-30):
   5. *Evaluation:* development seed 0 for both agents first; then the final test on seeds 4–6 with the chosen agent(s), reported next to the rules. PPO from scratch stays in the results as the comparison (does the warm start matter?).
   - Queue: `data/logs/q8.sh` (waits for `d30b57a4`, then replaces the rest of `q7.sh`).
   - Run `ba206b3d` started 2 Nov 11:39. Copy: agrees with the rules on 99.9% of the 4,000 practice windows (98.4% where they act) and 99.8% of the made-up States. **Step 0 (the copy alone): −4.64** (rules −4.69), so the copy plays like the rules. 6,000 steps: −4.67. ~2,000 steps per hour, so done ~3 Nov midday.
-- [ ] 7.4b Train PPO (Stable-Baselines3); `response/ppo.py` (`PPOPolicy`, extra `mlecho[rl]`).
-- [ ] 7.5 Final test on seeds 4–6; RESULTS; guides.
+  - **Result** (run `ba206b3d`, 16.7 h): chosen at 30,000 steps, held-out −3.88 (best of all policies).
+- [x] 7.4b `response/ppo.py` (`PPOPolicy`, extra `mlecho[rl]`).
+- [x] 7.5 Final test on fresh seeds 4–6 (RESULTS, experiment 15 step 7): copy-then-improve **matches the rules** (backdoor 1.5 ± 0.4% vs 1.7 ± 0.4%, slow-drip and label-flip identical, 0 false actions, harmless change escalated); PPO from scratch fails slow-drip 1 (97.3%, like no response) and barely helps label-flip (47.5% vs none 60.3%): a sim-to-real gap. Rules rerun on seed 1: 0 of 70 metrics differ. Guides updated.
+- Ideas for later (not planned): more agent seeds (one training seed each so far); charge escalations during attacks too (PPO from scratch used escalate as a free "continue"); harder real triggers, where the practice world says PPO helps most.
 
 ### 8. Evaluation
 - Two victim models: SmallCNN (width 64, ~86%) for everyday development and the PPO env; **CIFAR ResNet-18** (target ~93–95%, the standard in backdoor papers) for the final headline results. ResNet-18 takes ~1.8 min/epoch on the M2, so run it overnight or on the university GPU.
